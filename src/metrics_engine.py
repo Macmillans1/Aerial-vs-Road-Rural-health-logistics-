@@ -1,11 +1,12 @@
 """Supply Chain Analytics & Metrics Engine.
 
-Provides star-schema joins, data transformations, and core operational KPI calculations:
+Provides star-schema joins, runtime data validation, and core operational KPI calculations:
+- Runtime schema, relational, and physical consistency validation with many-to-one merge guards
 - Standard OTIF (On-Time In-Full) Rate (%) and Quality-Adjusted OTIF (OTIF-Q) Rate (%)
 - Order Cycle / Lead Time distributions (hours) across transport modes
 - Stock-Out frequencies across regions & product categories
 - Modal Transport Efficiency (Drone vs. Road velocity, distance bands, weather impact)
-- Cold-Chain integrity among delivered cold-chain shipments
+- Cold-Chain thermal integrity strictly evaluated over delivered cold shipments with unknown tracking
 - Regional Bottleneck Composite Index with stable normalization benchmarks
 """
 
@@ -17,6 +18,11 @@ import pandas as pd
 
 # Benchmark constant for stable bottleneck score normalization across all filters
 BENCHMARK_MAX_LEAD_TIME_HOURS = 12.0
+
+
+class DataValidationError(ValueError):
+    """Raised when logistics data violates schema requirements, relational integrity, or physical constraints."""
+    pass
 
 
 @dataclass
@@ -36,12 +42,72 @@ class ExecutiveKPIs:
     drone_road_delta_hours: Optional[float]
     stock_out_rate_pct: Optional[float]
     cold_chain_integrity_pct: Optional[float]
+    total_delivered_cold_orders: int
+    cold_chain_breaches_count: int
+    unknown_quality_cold_orders: int
     total_units_delivered: int
     total_value_delivered_usd: float
 
 
+def filter_shipment_ledger(
+    df: pd.DataFrame,
+    search_query: Optional[str] = None,
+    status_filter: Optional[str] = None,
+) -> pd.DataFrame:
+    """Filter shipment ledger using literal, null-safe text matching and order status.
+
+    Extracts ledger filtering into a reusable function to prevent duplication between
+    the UI and test suite, and ensures regex characters like '[' or '*' do not crash queries.
+    """
+    if df is None or len(df) == 0:
+        return pd.DataFrame() if df is None else df.copy()
+
+    df_result = df.copy()
+
+    if status_filter and status_filter != "All Statuses":
+        if "order_status_display" in df_result.columns:
+            df_result = df_result[df_result["order_status_display"] == status_filter]
+        elif "order_status" in df_result.columns:
+            df_result = df_result[df_result["order_status"] == status_filter]
+
+    if search_query:
+        query = search_query.strip().lower()
+        if query:
+            # Literal, null-safe string search across relevant dimensional descriptors
+            search_cols = ["request_id", "clinic_name", "product_name", "region", "hub_name"]
+            match_mask = pd.Series(False, index=df_result.index)
+            for col in search_cols:
+                if col in df_result.columns:
+                    col_matches = df_result[col].astype(str).str.lower().str.contains(query, regex=False, na=False)
+                    match_mask = match_mask | col_matches
+            df_result = df_result[match_mask]
+
+    return df_result
+
+
 class SupplyChainMetricsEngine:
-    """Analytical engine executing star-schema transformations and metric evaluations."""
+    """Analytical engine executing star-schema transformations, data validation, and KPI evaluations."""
+
+    REQUIRED_FACT_COLS = {
+        "request_id", "clinic_id", "product_id", "hub_id",
+        "requested_timestamp", "dispatch_timestamp", "delivery_timestamp",
+        "distance_km", "transport_mode", "order_status",
+        "units_requested", "units_delivered", "lead_time_hours"
+    }
+
+    REQUIRED_CLINIC_COLS = {
+        "clinic_id", "clinic_name", "region",
+        "latitude", "longitude", "remote_tier", "nearest_hub"
+    }
+
+    REQUIRED_PRODUCT_COLS = {
+        "product_id", "product_name", "category",
+        "storage_requirement", "target_delivery_hours"
+    }
+
+    REQUIRED_HUB_COLS = {
+        "hub_id", "hub_name", "region", "latitude", "longitude"
+    }
 
     def __init__(self, data_dir: str = "data"):
         self.data_dir = data_dir
@@ -51,12 +117,131 @@ class SupplyChainMetricsEngine:
         self.df_hubs: Optional[pd.DataFrame] = None
         self.df_master: Optional[pd.DataFrame] = None
 
+    @classmethod
+    def validate_raw_data(
+        cls,
+        df_fact: pd.DataFrame,
+        df_clinics: pd.DataFrame,
+        df_products: pd.DataFrame,
+        df_hubs: pd.DataFrame,
+    ) -> None:
+        """Validate raw datasets before relational joins.
+
+        Enforces:
+        - Required schema columns in fact and dimension tables
+        - Unique and non-null primary keys
+        - Referential foreign key integrity
+        - Logical chronological ordering of timestamps
+        - Quantity consistency across delivery statuses
+        - Non-negative physical metrics (distance, lead time)
+        """
+        # 1. Required column validation
+        fact_missing = cls.REQUIRED_FACT_COLS - set(df_fact.columns)
+        if fact_missing:
+            raise DataValidationError(f"fact_shipments missing required columns: {sorted(fact_missing)}")
+
+        clinic_missing = cls.REQUIRED_CLINIC_COLS - set(df_clinics.columns)
+        if clinic_missing:
+            raise DataValidationError(f"dim_clinics missing required columns: {sorted(clinic_missing)}")
+
+        product_missing = cls.REQUIRED_PRODUCT_COLS - set(df_products.columns)
+        if product_missing:
+            raise DataValidationError(f"dim_products missing required columns: {sorted(product_missing)}")
+
+        hub_missing = cls.REQUIRED_HUB_COLS - set(df_hubs.columns)
+        if hub_missing:
+            raise DataValidationError(f"dim_hubs missing required columns: {sorted(hub_missing)}")
+
+        # 2. Primary Key non-null and uniqueness
+        for df, pk, table_name in [
+            (df_fact, "request_id", "fact_shipments"),
+            (df_clinics, "clinic_id", "dim_clinics"),
+            (df_products, "product_id", "dim_products"),
+            (df_hubs, "hub_id", "dim_hubs"),
+        ]:
+            if df[pk].isna().any():
+                null_count = int(df[pk].isna().sum())
+                raise DataValidationError(f"{table_name} has {null_count} null primary key entries in column '{pk}'.")
+            if df[pk].duplicated().any():
+                dup_count = int(df[pk].duplicated().sum())
+                dup_samples = df[pk][df[pk].duplicated()].head(3).tolist()
+                raise DataValidationError(
+                    f"{table_name} has {dup_count} duplicate primary key values in '{pk}' (e.g. {dup_samples})."
+                )
+
+        # 3. Foreign Key referential integrity
+        valid_clinics = set(df_clinics["clinic_id"])
+        fact_invalid_clinics = set(df_fact["clinic_id"]) - valid_clinics
+        if fact_invalid_clinics:
+            raise DataValidationError(
+                f"fact_shipments contains invalid foreign keys in 'clinic_id': {sorted(list(fact_invalid_clinics))[:3]}"
+            )
+
+        valid_products = set(df_products["product_id"])
+        fact_invalid_products = set(df_fact["product_id"]) - valid_products
+        if fact_invalid_products:
+            raise DataValidationError(
+                f"fact_shipments contains invalid foreign keys in 'product_id': {sorted(list(fact_invalid_products))[:3]}"
+            )
+
+        valid_hubs = set(df_hubs["hub_id"])
+        fact_invalid_hubs = set(df_fact["hub_id"]) - valid_hubs
+        if fact_invalid_hubs:
+            raise DataValidationError(
+                f"fact_shipments contains invalid foreign keys in 'hub_id': {sorted(list(fact_invalid_hubs))[:3]}"
+            )
+
+        clinic_invalid_hubs = set(df_clinics["nearest_hub"].dropna()) - valid_hubs
+        if clinic_invalid_hubs:
+            raise DataValidationError(
+                f"dim_clinics contains invalid 'nearest_hub' foreign keys: {sorted(list(clinic_invalid_hubs))}"
+            )
+
+        # 4. Quantity consistency
+        stockouts = df_fact[df_fact["order_status"] == "Stock-Out"]
+        if (stockouts["units_delivered"] != 0).any():
+            invalid_cnt = int((stockouts["units_delivered"] != 0).sum())
+            raise DataValidationError(f"Quantity error: {invalid_cnt} Stock-Out shipments have units_delivered != 0.")
+
+        if (df_fact["units_requested"] <= 0).any():
+            invalid_cnt = int((df_fact["units_requested"] <= 0).sum())
+            raise DataValidationError(f"Quantity error: {invalid_cnt} shipments have units_requested <= 0.")
+
+        delivered = df_fact[df_fact["order_status"].isin(["Fulfilled", "Delayed"])]
+        if (delivered["units_delivered"] <= 0).any():
+            invalid_cnt = int((delivered["units_delivered"] <= 0).sum())
+            raise DataValidationError(f"Quantity error: {invalid_cnt} delivered shipments have units_delivered <= 0.")
+
+        # 5. Timestamp chronology for delivered shipments
+        req_dt = pd.to_datetime(delivered["requested_timestamp"], errors="coerce")
+        disp_dt = pd.to_datetime(delivered["dispatch_timestamp"], errors="coerce")
+        deliv_dt = pd.to_datetime(delivered["delivery_timestamp"], errors="coerce")
+
+        if (disp_dt < req_dt).any():
+            invalid_cnt = int((disp_dt < req_dt).sum())
+            raise DataValidationError(f"Timestamp error: {invalid_cnt} shipments have dispatch_timestamp < requested_timestamp.")
+
+        if (deliv_dt < disp_dt).any():
+            invalid_cnt = int((deliv_dt < disp_dt).sum())
+            raise DataValidationError(f"Timestamp error: {invalid_cnt} shipments have delivery_timestamp < dispatch_timestamp.")
+
+        # 6. Physical metrics sanity
+        if (df_fact["distance_km"] < 0).any():
+            raise DataValidationError("distance_km cannot contain negative values.")
+
+        deliv_lead = delivered["lead_time_hours"].dropna()
+        if (deliv_lead < 0).any():
+            raise DataValidationError("lead_time_hours cannot contain negative values for delivered shipments.")
+
     def load_data(self) -> "SupplyChainMetricsEngine":
         """Load fact and dimension tables from CSV storage and build analytical star-schema."""
         self.df_fact = pd.read_csv(f"{self.data_dir}/fact_shipments.csv")
         self.df_clinics = pd.read_csv(f"{self.data_dir}/dim_clinics.csv")
         self.df_products = pd.read_csv(f"{self.data_dir}/dim_products.csv")
         self.df_hubs = pd.read_csv(f"{self.data_dir}/dim_hubs.csv")
+
+        # Run strict validation before joins
+        self.validate_raw_data(self.df_fact, self.df_clinics, self.df_products, self.df_hubs)
 
         # Parse timestamps safely
         for col in ["requested_timestamp", "dispatch_timestamp", "delivery_timestamp"]:
@@ -67,26 +252,30 @@ class SupplyChainMetricsEngine:
         return self
 
     def _build_star_schema(self) -> None:
-        """Denormalize fact and dimension tables into an analytical master dataframe.
+        """Denormalize fact and dimension tables with many-to-one merge guards.
 
-        Recomputes on-time delivery flags directly from lead times and product targets,
-        preventing reliance on pre-existing or disparate CSV flags.
+        Validates merges to guarantee dimension duplicates cannot multiply shipment rows.
+        Recomputes on-time delivery flags and handles missing cold-chain quality values as unknown.
         """
+        # Guard against dimension duplicates multiplying shipment records using validate="many_to_one"
         df = self.df_fact.merge(
             self.df_clinics,
             on="clinic_id",
             how="left",
-            suffixes=("", "_clinic")
+            suffixes=("", "_clinic"),
+            validate="many_to_one"
         ).merge(
             self.df_products,
             on="product_id",
             how="left",
-            suffixes=("", "_product")
+            suffixes=("", "_product"),
+            validate="many_to_one"
         ).merge(
             self.df_hubs,
             on="hub_id",
             how="left",
-            suffixes=("", "_hub")
+            suffixes=("", "_hub"),
+            validate="many_to_one"
         )
 
         # Ensure nearest_hub is explicitly present; fall back to hub_id if missing in dim_clinics
@@ -112,7 +301,7 @@ class SupplyChainMetricsEngine:
         df["order_value_usd"] = df["units_delivered"].fillna(0) * df["unit_cost_usd"].fillna(0)
 
         # 1. Delivery Classification:
-        # Delivered orders have confirmed delivery timestamp and units delivered
+        # Delivered orders have confirmed delivery timestamp and positive units delivered
         df["is_delivered"] = df["delivery_timestamp"].notna() & (df["units_delivered"] > 0) & (df["order_status"] != "Stock-Out")
 
         # 2. Strict On-Time Delivery Flag recomputed against the single product target deadline
@@ -129,13 +318,26 @@ class SupplyChainMetricsEngine:
         # 4. In-Full Condition: Delivered quantity equals requested quantity
         df["is_in_full"] = df["is_delivered"] & (df["units_delivered"] == df["units_requested"])
 
-        # 5. Quality Condition: No cold-chain thermal breach
-        df["is_quality_pass"] = ~df["cold_chain_breach"].fillna(False)
+        # 5. Quality Compliance Condition:
+        # For cold-chain products:
+        #   - False breach -> Quality pass
+        #   - True breach  -> Quality fail
+        #   - NaN/missing  -> Unknown quality (CANNOT be silently treated as a pass!)
+        # For ambient products: Quality compliance is inherent (not temperature-controlled).
+        is_cold = df["storage_requirement"] == "Cold Chain"
+        df["is_cold_chain"] = is_cold
+        df["quality_known"] = (~is_cold) | (df["cold_chain_breach"].notna())
+        df["is_quality_pass"] = False
+
+        # Cold chain pass only when explicitly False (verified no breach)
+        df.loc[is_cold & (df["cold_chain_breach"] == False), "is_quality_pass"] = True
+        # Ambient items automatically pass thermal compliance
+        df.loc[~is_cold, "is_quality_pass"] = True
 
         # 6. Standard OTIF: On-Time AND In-Full
         df["is_standard_otif"] = df["is_on_time"] & df["is_in_full"]
 
-        # 7. Quality-Adjusted OTIF (OTIF-Q): Standard OTIF AND Quality Pass
+        # 7. Quality-Adjusted OTIF (OTIF-Q): Standard OTIF AND verified Quality Pass
         df["is_quality_otif"] = df["is_standard_otif"] & df["is_quality_pass"]
 
         # Sync master order status view for display consistency
@@ -160,7 +362,6 @@ class SupplyChainMetricsEngine:
         """
         df = self.df_master.copy()
 
-        # Explicitly empty list means the user deselected everything: return 0 records
         if regions is not None:
             df = df[df["region"].isin(regions)]
 
@@ -173,13 +374,11 @@ class SupplyChainMetricsEngine:
         if remote_tiers is not None:
             df = df[df["remote_tier"].isin(remote_tiers)]
 
-        # Safe Date Range Filtering
         if date_range is not None:
             if isinstance(date_range, (tuple, list)) and len(date_range) >= 1:
                 start_date = date_range[0]
                 end_date = date_range[1] if len(date_range) > 1 else date_range[0]
                 if start_date is not None and end_date is not None:
-                    # Normalize to python date object if Timestamp or str
                     if hasattr(start_date, "date"):
                         start_date = start_date.date()
                     if hasattr(end_date, "date"):
@@ -196,7 +395,7 @@ class SupplyChainMetricsEngine:
         """Calculate high-level executive KPIs from filtered dataset.
 
         Returns None for metrics that have no eligible denominator records, enabling
-        clean 'N/A' display in the UI.
+        clean 'N/A' display in the UI. Explicitly tracks unknown quality counts.
         """
         total_requests = len(df)
         if total_requests == 0:
@@ -215,6 +414,9 @@ class SupplyChainMetricsEngine:
                 drone_road_delta_hours=None,
                 stock_out_rate_pct=None,
                 cold_chain_integrity_pct=None,
+                total_delivered_cold_orders=0,
+                cold_chain_breaches_count=0,
+                unknown_quality_cold_orders=0,
                 total_units_delivered=0,
                 total_value_delivered_usd=0.0,
             )
@@ -258,14 +460,26 @@ class SupplyChainMetricsEngine:
             else None
         )
 
-        # Cold chain integrity calculated ONLY among delivered cold-chain shipments
-        delivered_cold_chain = delivered_df[delivered_df["storage_requirement"] == "Cold Chain"]
-        if len(delivered_cold_chain) > 0:
-            cold_chain_integrity = round(
-                (1.0 - (delivered_cold_chain["cold_chain_breach"].sum() / len(delivered_cold_chain))) * 100.0,
-                2
-            )
+        # Cold chain integrity evaluated strictly among delivered cold-chain shipments
+        delivered_cold = delivered_df[delivered_df["storage_requirement"] == "Cold Chain"]
+        total_delivered_cold = len(delivered_cold)
+
+        if total_delivered_cold > 0:
+            breaches_count = int((delivered_cold["cold_chain_breach"] == True).sum())
+            unknown_quality_count = int(delivered_cold["cold_chain_breach"].isna().sum())
+            known_delivered_cold = delivered_cold[delivered_cold["cold_chain_breach"].notna()]
+
+            # Verified integrity evaluated over known delivered cold items
+            if len(known_delivered_cold) > 0:
+                cold_chain_integrity = round(
+                    ((known_delivered_cold["cold_chain_breach"] == False).sum() / len(known_delivered_cold)) * 100.0,
+                    2
+                )
+            else:
+                cold_chain_integrity = None
         else:
+            breaches_count = 0
+            unknown_quality_count = 0
             cold_chain_integrity = None
 
         total_units = int(df["units_delivered"].sum())
@@ -286,6 +500,9 @@ class SupplyChainMetricsEngine:
             drone_road_delta_hours=drone_road_delta,
             stock_out_rate_pct=round(stock_out_rate, 2),
             cold_chain_integrity_pct=cold_chain_integrity,
+            total_delivered_cold_orders=total_delivered_cold,
+            cold_chain_breaches_count=breaches_count,
+            unknown_quality_cold_orders=unknown_quality_count,
             total_units_delivered=total_units,
             total_value_delivered_usd=round(total_value, 2),
         )
@@ -397,9 +614,10 @@ class SupplyChainMetricsEngine:
             avg_lead_time = delivered["lead_time_hours"].mean() if has_delivered else np.nan
 
             cold_delivered = delivered[delivered["storage_requirement"] == "Cold Chain"]
+            known_cold = cold_delivered[cold_delivered["cold_chain_breach"].notna()]
             cold_breach_rate = (
-                (cold_delivered["cold_chain_breach"].sum() / len(cold_delivered)) * 100.0
-                if len(cold_delivered) > 0
+                ((known_cold["cold_chain_breach"] == True).sum() / len(known_cold)) * 100.0
+                if len(known_cold) > 0
                 else 0.0
             )
 
@@ -443,9 +661,7 @@ class SupplyChainMetricsEngine:
         if len(df) == 0:
             return pd.DataFrame()
 
-        # Group by clinic and preserve nearest_hub
         group_cols = ["clinic_id", "clinic_name", "region", "remote_tier", "latitude", "longitude", "nearest_hub"]
-        # Ensure all group columns exist in df
         for col in group_cols:
             if col not in df.columns:
                 if col == "nearest_hub":
@@ -461,7 +677,7 @@ class SupplyChainMetricsEngine:
             quality_otif=("is_quality_otif", "sum"),
             avg_lead_time_hours=("lead_time_hours", lambda s: s[df.loc[s.index, "is_delivered"]].mean()),
             drone_share_pct=("transport_mode", lambda s: (s == "Drone").mean() * 100.0),
-            cold_chain_breaches=("cold_chain_breach", lambda s: s[df.loc[s.index, "is_delivered"]].sum()),
+            cold_chain_breaches=("cold_chain_breach", lambda s: (s[df.loc[s.index, "is_delivered"]] == True).sum()),
         ).reset_index()
 
         clinic_agg["standard_otif_rate_pct"] = (
@@ -472,7 +688,11 @@ class SupplyChainMetricsEngine:
             (clinic_agg["quality_otif"] / clinic_agg["total_orders"]) * 100.0
         ).round(1)
 
-        # Risk tier categorization based on Standard OTIF rate and stockout rate
+        # Risk tier categorization rationale:
+        # Standard OTIF < 65% represents a critical supply failure rate.
+        # Stockouts > 8% signifies severe localized inventory depletion.
+        # 65% - 80% represents an unstable intermediate operational buffer.
+        # >= 80% aligns with humanitarian healthcare distribution benchmarks.
         def assign_risk(row: pd.Series) -> str:
             stockout_freq = row["stock_outs"] / row["total_orders"] if row["total_orders"] > 0 else 0
             if row["standard_otif_rate_pct"] < 65.0 or stockout_freq > 0.08:

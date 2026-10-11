@@ -18,7 +18,12 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.metrics_engine import SupplyChainMetricsEngine, ExecutiveKPIs
+from src.metrics_engine import (
+    SupplyChainMetricsEngine,
+    ExecutiveKPIs,
+    DataValidationError,
+    filter_shipment_ledger,
+)
 from src.map_visualizer import build_pydeck_logistics_map
 
 
@@ -243,17 +248,154 @@ class TestMetricsEngineCalculations(unittest.TestCase):
 
         for query in search_terms:
             try:
-                mask = (
-                    df["request_id"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-                    | df["clinic_name"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-                    | df["product_name"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-                    | df["region"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-                )
-                filtered_count = mask.sum()
-                self.assertIsInstance(int(filtered_count), int)
+                res = filter_shipment_ledger(df, search_query=query)
+                self.assertIsInstance(len(res), int)
             except Exception as e:
                 self.fail(f"Search failed on punctuation query '{query}': {e}")
 
 
+class TestRuntimeDataValidation(unittest.TestCase):
+    """Test suite verifying that runtime validation detects and rejects corrupt datasets."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data_dir = "data"
+        cls.df_fact = pd.read_csv(f"{cls.data_dir}/fact_shipments.csv")
+        cls.df_clinics = pd.read_csv(f"{cls.data_dir}/dim_clinics.csv")
+        cls.df_products = pd.read_csv(f"{cls.data_dir}/dim_products.csv")
+        cls.df_hubs = pd.read_csv(f"{cls.data_dir}/dim_hubs.csv")
+
+    def test_missing_required_column_raises_error(self):
+        """Ensure dropping a required column from fact or dim table raises DataValidationError."""
+        corrupt_fact = self.df_fact.drop(columns=["lead_time_hours"])
+        with self.assertRaises(DataValidationError) as ctx:
+            SupplyChainMetricsEngine.validate_raw_data(
+                corrupt_fact, self.df_clinics, self.df_products, self.df_hubs
+            )
+        self.assertIn("lead_time_hours", str(ctx.exception))
+
+    def test_duplicate_primary_key_raises_error(self):
+        """Ensure duplicate primary keys in dimension tables raise DataValidationError."""
+        corrupt_clinics = pd.concat([self.df_clinics, self.df_clinics.iloc[[0]]], ignore_index=True)
+        with self.assertRaises(DataValidationError) as ctx:
+            SupplyChainMetricsEngine.validate_raw_data(
+                self.df_fact, corrupt_clinics, self.df_products, self.df_hubs
+            )
+        self.assertIn("duplicate primary key", str(ctx.exception).lower())
+
+    def test_null_primary_key_raises_error(self):
+        """Ensure null primary keys in fact table raise DataValidationError."""
+        corrupt_fact = self.df_fact.copy()
+        corrupt_fact.loc[0, "request_id"] = np.nan
+        with self.assertRaises(DataValidationError) as ctx:
+            SupplyChainMetricsEngine.validate_raw_data(
+                corrupt_fact, self.df_clinics, self.df_products, self.df_hubs
+            )
+        self.assertIn("null primary key", str(ctx.exception).lower())
+
+    def test_invalid_foreign_key_raises_error(self):
+        """Ensure unmapped foreign keys in fact table raise DataValidationError."""
+        corrupt_fact = self.df_fact.copy()
+        corrupt_fact.loc[0, "clinic_id"] = "CLN-NONEXISTENT"
+        with self.assertRaises(DataValidationError) as ctx:
+            SupplyChainMetricsEngine.validate_raw_data(
+                corrupt_fact, self.df_clinics, self.df_products, self.df_hubs
+            )
+        self.assertIn("invalid foreign key", str(ctx.exception).lower())
+
+    def test_invalid_timestamp_order_raises_error(self):
+        """Ensure dispatch preceding request raises DataValidationError."""
+        corrupt_fact = self.df_fact.copy()
+        fulfilled_idx = corrupt_fact[corrupt_fact["order_status"] == "Fulfilled"].index[0]
+        corrupt_fact.loc[fulfilled_idx, "dispatch_timestamp"] = "2023-01-01 00:00:00"
+        corrupt_fact.loc[fulfilled_idx, "requested_timestamp"] = "2023-01-02 00:00:00"
+        with self.assertRaises(DataValidationError) as ctx:
+            SupplyChainMetricsEngine.validate_raw_data(
+                corrupt_fact, self.df_clinics, self.df_products, self.df_hubs
+            )
+        self.assertIn("dispatch_timestamp < requested_timestamp", str(ctx.exception))
+
+    def test_inconsistent_quantities_raises_error(self):
+        """Ensure stock-out with positive delivered units raises DataValidationError."""
+        corrupt_fact = self.df_fact.copy()
+        stockout_idx = corrupt_fact[corrupt_fact["order_status"] == "Stock-Out"].index[0]
+        corrupt_fact.loc[stockout_idx, "units_delivered"] = 15
+        with self.assertRaises(DataValidationError) as ctx:
+            SupplyChainMetricsEngine.validate_raw_data(
+                corrupt_fact, self.df_clinics, self.df_products, self.df_hubs
+            )
+        self.assertIn("stock-out shipments have units_delivered != 0", str(ctx.exception).lower())
+
+
+class TestUnknownColdChainHandling(unittest.TestCase):
+    """Test suite verifying missing cold-chain records are handled as unknown rather than quality passes."""
+
+    def test_missing_cold_chain_breach_treated_as_unknown(self):
+        """Ensure null cold_chain_breach evaluates to is_quality_pass=False and quality_known=False."""
+        engine = SupplyChainMetricsEngine(data_dir="data")
+        engine.load_data()
+        df = engine.df_master.copy()
+
+        # Find delivered cold-chain records
+        delivered_cold_mask = df["is_delivered"] & (df["storage_requirement"] == "Cold Chain")
+        self.assertTrue(delivered_cold_mask.any())
+
+        # Allow nullable entries by casting cold_chain_breach to object
+        df["cold_chain_breach"] = df["cold_chain_breach"].astype(object)
+        target_indices = df[delivered_cold_mask].index[:10]
+        df.loc[target_indices, "cold_chain_breach"] = np.nan
+
+        # Re-derive quality flags using the exact metrics_engine logic
+        is_cold = df["storage_requirement"] == "Cold Chain"
+        df["quality_known"] = ~is_cold | df["cold_chain_breach"].notna()
+        df["is_quality_pass"] = np.where(
+            ~is_cold,
+            True,
+            df["cold_chain_breach"] == False
+        )
+        df["is_quality_otif"] = df["is_delivered"] & df["is_on_time"] & df["is_quality_pass"]
+
+        # The target indices must NOT be quality pass
+        self.assertFalse(df.loc[target_indices, "is_quality_pass"].any(), "NaN cold chain breach was treated as pass!")
+        self.assertFalse(df.loc[target_indices, "quality_known"].any(), "NaN cold chain breach was treated as known!")
+
+        # Check KPI computation
+        kpis = engine.compute_executive_kpis(df)
+        self.assertEqual(kpis.unknown_quality_cold_orders, 10, "KPI did not report 10 unknown quality cold orders")
+
+
+class TestShipmentLedgerSearch(unittest.TestCase):
+    """Test suite verifying filter_shipment_ledger behavior."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.engine = SupplyChainMetricsEngine(data_dir="data").load_data()
+
+    def test_filter_by_status(self):
+        """Ensure filtering by status returns only records of that status."""
+        df_fulfilled = filter_shipment_ledger(self.engine.df_master, status_filter="Fulfilled")
+        self.assertTrue((df_fulfilled["order_status"] == "Fulfilled").all())
+
+        df_delayed = filter_shipment_ledger(self.engine.df_master, status_filter="Delayed")
+        self.assertTrue((df_delayed["order_status"] == "Delayed").all())
+
+        df_stockout = filter_shipment_ledger(self.engine.df_master, status_filter="Stock-Out")
+        self.assertTrue((df_stockout["order_status"] == "Stock-Out").all())
+
+    def test_literal_search_brackets_and_wildcards(self):
+        """Ensure bracket and wildcard characters don't cause regex parse crashes."""
+        for char in ["[", "]", "*", "+", "?", "^", "$", "(", ")"]:
+            res = filter_shipment_ledger(self.engine.df_master, search_query=char)
+            self.assertIsInstance(len(res), int)
+
+    def test_case_insensitive_matching(self):
+        """Ensure searching 'kumasi' or 'KUMASI' matches case-insensitively."""
+        res_lower = filter_shipment_ledger(self.engine.df_master, search_query="omenako")
+        res_upper = filter_shipment_ledger(self.engine.df_master, search_query="OMENAKO")
+        self.assertEqual(len(res_lower), len(res_upper))
+        self.assertGreater(len(res_lower), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
+

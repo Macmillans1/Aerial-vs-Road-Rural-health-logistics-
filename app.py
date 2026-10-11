@@ -12,7 +12,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.metrics_engine import SupplyChainMetricsEngine, ExecutiveKPIs
+from src.metrics_engine import SupplyChainMetricsEngine, ExecutiveKPIs, filter_shipment_ledger
 from src.map_visualizer import build_pydeck_logistics_map, build_plotly_geographic_scatter
 
 # -----------------------------------------------------------------------------
@@ -338,7 +338,7 @@ with row1_col2:
 with row1_col3:
     avg_lt_str = f"{kpis.avg_lead_time_hours:.1f}" if kpis.avg_lead_time_hours is not None else "N/A"
     if kpis.drone_road_delta_hours is not None:
-        delta_sub = f"⚡ Drone saves <b>{kpis.drone_road_delta_hours:.1f} hrs/trip</b> vs Road"
+        delta_sub = f"⚡ Diff in avg simulated lead time: <b>-{kpis.drone_road_delta_hours:.1f} hrs</b> (Drone vs Road)"
     elif kpis.drone_avg_lead_time_hours is not None:
         delta_sub = f"⚡ Drone-only active ({kpis.drone_avg_lead_time_hours:.1f} hrs)"
     elif kpis.road_avg_lead_time_hours is not None:
@@ -380,11 +380,12 @@ with row2_col2:
 
 with row2_col3:
     cold_str = fmt_pct(kpis.cold_chain_integrity_pct)
+    unknown_note = f" (Unknown: {kpis.unknown_quality_cold_orders})" if kpis.unknown_quality_cold_orders > 0 else ""
     st.markdown(f"""
         <div class="metric-card">
             <div class="metric-title">Cold-Chain Thermal Integrity</div>
             <div class="metric-value" style="color: {'#10B981' if kpis.cold_chain_integrity_pct and kpis.cold_chain_integrity_pct >= 95 else '#F59E0B'};">{cold_str}</div>
-            <div class="metric-sub">❄️ Denominator: Delivered Cold Items</div>
+            <div class="metric-sub">❄️ Denom: {kpis.total_delivered_cold_orders:,} Delivered Cold Items{unknown_note}</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -406,6 +407,7 @@ with map_col1:
         deck, unmapped = build_pydeck_logistics_map(
             df_clinic_metrics=df_clinic_metrics,
             df_hubs=engine.df_hubs,
+            df_filtered=df_filtered,
             color_by=map_color_choice,
             show_supply_corridors=show_supply_corridors,
         )
@@ -416,34 +418,71 @@ with map_col1:
         fig_geo = build_plotly_geographic_scatter(
             df_clinic_metrics=df_clinic_metrics,
             df_hubs=engine.df_hubs,
+            df_filtered=df_filtered,
             color_by=map_color_choice,
         )
         st.plotly_chart(fig_geo, use_container_width=True)
 
 with map_col2:
-    st.markdown("""
+    if map_color_choice == "risk_tier":
+        legend_nodes_html = """
+            <div style="margin-bottom: 8px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border-radius: 50%; margin-right: 6px;"></span>
+                <b>Optimal Clinic</b> (Std OTIF &ge; 80%)
+            </div>
+            <div style="margin-bottom: 8px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #F59E0B; border-radius: 50%; margin-right: 6px;"></span>
+                <b>Moderate Risk</b> (Std OTIF 65–80%)
+            </div>
+            <div style="margin-bottom: 8px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #EF4444; border-radius: 50%; margin-right: 6px;"></span>
+                <b>High Risk</b> (Std OTIF &lt; 65% or Stockout &gt; 8%)
+            </div>
+        """
+        legend_explainer = """
+            <b>Threshold Rationale:</b><br>
+            • <b>&ge; 80%</b>: Meets emergency target reliability benchmarks.<br>
+            • <b>65–80%</b>: Elevated delay volatility requiring buffer stock.<br>
+            • <b>&lt; 65% / &gt; 8% stockout</b>: Critical service gaps risking life-saving treatment access.
+        """
+    else:
+        legend_nodes_html = """
+            <div style="margin-bottom: 8px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #3B82F6; border-radius: 50%; margin-right: 6px;"></span>
+                <b>Tier 1</b>: Peri-urban accessible
+            </div>
+            <div style="margin-bottom: 8px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #8B5CF6; border-radius: 50%; margin-right: 6px;"></span>
+                <b>Tier 2</b>: Rural unpaved corridor
+            </div>
+            <div style="margin-bottom: 8px;">
+                <span style="display: inline-block; width: 10px; height: 10px; background: #EC4899; border-radius: 50%; margin-right: 6px;"></span>
+                <b>Tier 3</b>: Isolated rainforest / riverine
+            </div>
+        """
+        legend_explainer = """
+            <b>Terrain Classification:</b><br>
+            Reflects road infrastructure decay and terrain winding multipliers (1.35x to 1.85x).
+        """
+
+    st.markdown(f"""
         <div style="background: rgba(22, 31, 48, 0.7); border-radius: 12px; padding: 16px; border: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.85rem;">
             <div style="font-weight: 700; color: #00D2BA; margin-bottom: 10px; font-size: 0.95rem;">Network Topology Legend</div>
             <div style="margin-bottom: 8px;">
                 <span style="display: inline-block; width: 12px; height: 12px; background: #00D2BA; border-radius: 3px; margin-right: 6px;"></span>
-                <b>Distribution Center</b> (Omenako, Mpanya, Kukua, Sefwi, Ankaful)
+                <b>Active Hub</b> (Dispatches in active filter)
             </div>
             <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Optimal Clinic</b> (Standard OTIF &gt; 80%)
+                <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #9CA3AF; background: #6B7280; border-radius: 3px; margin-right: 6px;"></span>
+                <b>Configured Hub</b> (0 dispatches in filter)
             </div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #F59E0B; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Moderate Risk Clinic</b> (Standard OTIF 65–80%)
-            </div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #EF4444; border-radius: 50%; margin-right: 6px;"></span>
-                <b>High Risk Clinic</b> (Standard OTIF &lt; 65% or High Stockouts)
-            </div>
+            {legend_nodes_html}
             <hr style="border-color: rgba(255,255,255,0.08); margin: 12px 0;">
             <div style="font-size: 0.78rem; color: #9CA3AF; line-height: 1.4;">
-                <b>Route Visualization Notice:</b><br>
-                Arcs depict illustrative logistical supply links between assigned hubs and clinics; they do not represent real-time radar tracks or live flight paths.
+                {legend_explainer}
+                <div style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">
+                    * Corridors represent illustrative logistical links; not live radar tracks.
+                </div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -723,22 +762,8 @@ with table_control_col2:
 with table_control_col3:
     limit_rows = st.selectbox("Display Row Limit", [50, 100, 250, 1000], index=1)
 
-# Apply ledger filters
-df_ledger = df_filtered.copy()
-
-if status_filter != "All Statuses" and "order_status_display" in df_ledger.columns:
-    df_ledger = df_ledger[df_ledger["order_status_display"] == status_filter]
-
-# Literal, null-safe text search (regex=False and na=False prevents character crashing like '[')
-if search_query:
-    query = search_query.strip().lower()
-    mask = (
-        df_ledger["request_id"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-        | df_ledger["clinic_name"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-        | df_ledger["product_name"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-        | df_ledger["region"].astype(str).str.lower().str.contains(query, regex=False, na=False)
-    )
-    df_ledger = df_ledger[mask]
+# Apply ledger filters using extracted reusable search function
+df_ledger = filter_shipment_ledger(df_filtered, search_query=search_query, status_filter=status_filter)
 
 display_columns = [
     "request_id",
@@ -819,4 +844,12 @@ with st.expander("📐 Technical Architecture, Star Schema & Methodological Note
     #### 3. Regional Bottleneck Composite Index
     Normalized against a stable operational reference of 12.0 hours (benchmark max acceptable lead time):
     $$\\text{Bottleneck Index} = 0.35 \\times \\text{StockOut\\%} + 0.35 \\times \\text{Delay\\%} + 20 \\times \\min\\left(1.0, \\frac{\\bar{T}_{\\text{lead}}}{12.0}\\right) + 0.10 \\times \\text{ColdBreach\\%}$$
+
+    #### 4. Operational Risk Threshold Rationale
+    - **Optimal Tier (Standard OTIF $\\ge 80\\%$)**: Aligns with WHO and humanitarian logistics targets where at least 4 out of 5 critical requisitions arrive strictly on-time and in-full.
+    - **Moderate Risk (Standard OTIF $65\\% \\le \\text{Rate} < 80\\%$)**: Represents an unstable operational corridor with elevated lead-time volatility requiring higher safety stock buffers.
+    - **High Risk (Standard OTIF $< 65\\%$ or Stockout Rate $> 8\\%$)**: Signifies severe delivery bottlenecks and stockouts that risk life-threatening gaps in anti-snake venom, emergency blood transfusion, and neonatal resuscitation.
+
+    #### 5. Fleet Model Scope Notice
+    *Fleet capacity constraints (discrete vehicle counts), maximum payload weight limits, and service-radius eligibility criteria are recorded in dimension schemas but are not yet enforced in dispatch allocation logic.*
     """)

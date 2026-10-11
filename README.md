@@ -94,26 +94,34 @@ $$\text{Bottleneck Index} = 0.35 \times \text{StockOut\%} + 0.35 \times \text{De
 
 ---
 
+### 5. Operational Risk Threshold Rationale
+- **Optimal Tier (Standard OTIF $\ge 80\%$)**: Corresponds to international humanitarian logistics and WHO emergency target reliability where at least 4 out of 5 critical medical requisitions arrive strictly on-time and in-full.
+- **Moderate Risk (Standard OTIF $65\% \le \text{Rate} < 80\%$)**: Indicates an unstable operational corridor with elevated lead-time volatility requiring higher clinic buffer stock.
+- **High Risk (Standard OTIF $< 65\%$ or Stock-Out Rate $> 8\%$)**: Represents a critical supply bottleneck where frequent fulfillment failures or inventory depletion risk life-threatening delays for snakebite antivenom, emergency blood transfusion, and neonatal resuscitation.
+
+---
+
 ## 4. Simulation Results & Scenario Analysis
 
-The headline metrics computed directly from the 12,500 simulation records (using uniform product target deadlines across all modes):
+The headline metrics generated directly via the reproducible script [`scripts/generate_simulation_table.py`](file:///d:/Rural%20Logistics/scripts/generate_simulation_table.py) calling the metrics engine:
 
-| Metric | Total / Baseline | Autonomous Drone Fleet | Rural Ground Fleet | Modal Comparison |
+| Metric | Total / Baseline | Autonomous Drone Fleet | Rural Ground Fleet | Modal Comparison (Drone vs. Road) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Total Requisitions ($N$)** | **12,500** | 10,297 (82.4%) | 2,203 (17.6%) | — |
-| **Successfully Delivered** | **11,899 (95.2%)** | 9,799 (95.2%) | 2,100 (95.3%) | Similar delivery fulfillment |
-| **Stock-Out Rate** | **601 (4.81%)** | 498 (4.84%) | 103 (4.68%) | Inventory driven |
-| **Standard OTIF Rate** | **69.22% (8,653 / 12,500)** | 72.04% (7,418 / 10,297) | 56.06% (1,235 / 2,203) | **+16.0% Drone SLA edge** |
-| **Quality-Adjusted OTIF (OTIF-Q)** | **68.27% (8,534 / 12,500)** | 71.43% (7,355 / 10,297) | 53.52% (1,179 / 2,203) | **+17.9% Drone OTIF-Q edge** |
-| **Average Order Lead Time** | **2.03 hours** | **1.22 hours** | **5.79 hours** | **4.57 hours saved per trip (78.9%)** |
-| **Tier 3 (Deep Rural) Lead Time** | **2.76 hours** | **1.54 hours** | **12.30 hours** | **10.76 hours saved per trip (87.5%)** |
-| **Cold-Chain Breach Rate** | **3.31% (253 / 7,649)** | **1.03% (63 / 6,137)** | **12.57% (190 / 1,512)** | **12.2x lower breach rate with drones** |
+| **Total Requisitions ($N$)** | **12,500** | 10,297 (82.4%) | 2,203 (17.6%) | Denominator basis |
+| **Successfully Delivered** | **11,899 (95.19%)** | 9,799 (95.16%) | 2,100 (95.32%) | -0.16 percentage points |
+| **Stock-Out Rate** | **601 (4.81%)** | 498 (4.84%) | 103 (4.68%) | +0.16 percentage points |
+| **Standard OTIF Rate** | **69.22% (8,653 / 12,500)** | 72.04% (7,418 / 10,297) | 56.06% (1,235 / 2,203) | **+15.98 percentage points** |
+| **Quality-Adjusted OTIF (OTIF-Q)** | **68.27% (8,534 / 12,500)** | 71.65% (7,378 / 10,297) | 52.47% (1,156 / 2,203) | **+19.18 percentage points** |
+| **Average Simulated Lead Time** | **2.03 hours** | **1.22 hours** | **5.79 hours** | **-4.57 hours (78.9% relative difference)** |
+| **Tier 3 (Deep Rural) Lead Time** | **2.75 hours** | **1.54 hours** | **12.30 hours** | **-10.76 hours (87.5% relative difference)** |
+| **Cold-Chain Breach Rate** | **3.31% (253 / 7,649)** | **1.03% (63 / 6,137)** | **12.57% (190 / 1,512)** | **-11.54 percentage points** |
 
 ### Stated Denominators & Methodological Notes:
-1. Requisitions ($N = 12,500$) represent requests over a 1-year operational window.
+1. Requisitions ($N = 12,500$) represent all logged requests over a 1-year operational window.
 2. Lead times are calculated strictly over delivered orders ($N_{\text{delivered}} = 11,899$).
-3. Cold-chain breach rates are calculated only over delivered cold-chain orders ($N_{\text{cold\_delivered}} = 7,649$).
-4. The 2.2x deadline multiplier previously assigned to road shipments has been removed; both modalities are evaluated against identical product SLA deadlines.
+3. Cold-chain breach rates are calculated only over delivered cold-chain orders with verified quality ($N_{\text{cold\_delivered}} = 7,649$). Missing quality values are treated as unknown, not as passes.
+4. Differences between percentage rates are expressed in **percentage points (pp)**. Differences in lead times represent differences in average simulated lead times across transport modes.
+5. Both modalities are evaluated against identical product SLA deadlines.
 
 ---
 
@@ -128,13 +136,15 @@ d:/Rural Logistics/
 │   ├── dim_clinics.csv           # 32 clinics mapped across 6 administrative regions
 │   ├── dim_products.csv          # 14 medical items (antivenom, blood, vaccines, essential meds)
 │   └── dim_hubs.csv              # 5 central fulfillment hubs
+├── scripts/
+│   └── generate_simulation_table.py # Reproducible script generating Markdown KPI tables
 ├── src/
 │   ├── __init__.py
 │   ├── data_generator.py         # Synthetic generation pipeline with uniform SLA deadlines
-│   ├── metrics_engine.py         # Star-schema joins, OTIF recomputation, bottleneck engine
+│   ├── metrics_engine.py         # Star-schema joins, OTIF recomputation, runtime schema validation
 │   └── map_visualizer.py         # PyDeck 3D illustrative corridors & Plotly scatter mapping
 ├── tests/
-│   └── test_logistics.py         # 11 regression & validation unit tests
+│   └── test_logistics.py         # Comprehensive validation & regression test suite (21 tests)
 ├── app.py                        # Streamlit dashboard entry point
 ├── requirements.txt              # Dependency specifications
 └── README.md                     # Technical architecture documentation
@@ -147,18 +157,18 @@ d:/Rural Logistics/
 *Pre-formulated for Master of Science applications in Data Science, Data Engineering, and Analytics:*
 
 ```markdown
-- Architected an end-to-end healthcare logistics analytics platform modeled on Ghana's medical drone distribution network (Zipline/GHS), engineering a dimensional Star Schema joining 12,500+ transactional records across 4 relational tables in Pandas and NumPy.
-- Formulated supply chain KPI algorithms in Python, including dual-track Standard OTIF and Quality-Adjusted OTIF (OTIF-Q) tracking against uniform product SLA deadlines, and a benchmarked Regional Bottleneck Vulnerability Index.
-- Built an interactive geospatial telemetry dashboard using Streamlit, PyDeck, and Plotly, rendering 3D illustrative supply corridors and multi-layer risk classifications across 32 clinics and 5 regional distribution centers.
-- Modeled seasonal monsoon weather disruptions and cold-chain compliance, quantitatively demonstrating that autonomous drones reduce emergency order cycle times by 78.9% (1.2h vs. 5.8h) and deep-rural lead times by 87.5% (1.5h vs. 12.3h) compared to ground road transport.
-- Implemented an automated validation test suite (11 unit tests covering primary/foreign key integrity, timestamp ordering, denominator correctness, open-ended distance banding, and regex search safety).
+- Architected an end-to-end healthcare logistics analytics platform modeled on Ghana's medical drone distribution network (Zipline/GHS), engineering a dimensional Star Schema joining 12,500+ transactional records across 4 relational tables in Pandas and NumPy with many-to-one validation.
+- Formulated supply chain KPI algorithms in Python, demonstrating a +19.18 percentage point advantage in Quality-Adjusted OTIF for autonomous drones (71.65%) over ground vehicles (52.47%) against uniform product SLA targets, and engineered an actionable Regional Bottleneck Vulnerability Index.
+- Built an interactive geospatial telemetry dashboard using Streamlit, PyDeck, and Plotly, rendering 3D illustrative supply corridors, dynamic color-tier legends, and distinguishing active dispatches from configured hub capacity across 32 clinics.
+- Modeled seasonal monsoon weather disruptions and cold-chain compliance, quantitatively demonstrating that autonomous drones reduce emergency order lead time differences by 78.9% (1.2h vs. 5.8h) and deep-rural lead times by 87.5% (1.5h vs. 12.3h) compared to ground road transport.
+- Implemented an automated validation test suite (21 unit tests covering schema validation, primary/foreign key integrity, timestamp ordering, unknown cold-chain handling, and regex-safe search).
 ```
 
 ---
 
 ## 7. Validation and Regression Testing
 
-The repository includes a dedicated test suite verifying data integrity and analytical correctness:
+The repository includes a dedicated test suite verifying data integrity, runtime schemas, and analytical correctness:
 
 ```bash
 python -m unittest tests/test_logistics.py -v
@@ -180,6 +190,16 @@ pytest tests/test_logistics.py -v
 9. `test_empty_filters`: Verification that deselecting filters yields empty data rather than resetting to all records.
 10. `test_single_mode_comparisons`: Safe `None` (N/A) handling when comparing single-mode subsets.
 11. `test_punctuation_and_regex_searches`: Literal search execution without regex syntax errors.
+12. `test_missing_required_column_raises_error`: Assertion that dropped schema columns raise `DataValidationError`.
+13. `test_duplicate_primary_key_raises_error`: Assertion that duplicate dimension keys raise `DataValidationError`.
+14. `test_null_primary_key_raises_error`: Assertion that null primary keys raise `DataValidationError`.
+15. `test_invalid_foreign_key_raises_error`: Assertion that unmapped foreign keys raise `DataValidationError`.
+16. `test_invalid_timestamp_order_raises_error`: Assertion that inverted timestamps raise `DataValidationError`.
+17. `test_inconsistent_quantities_raises_error`: Assertion that positive units on stockouts raise `DataValidationError`.
+18. `test_missing_cold_chain_breach_treated_as_unknown`: Assertion that null breach values evaluate to unknown quality, not quality passes.
+19. `test_filter_by_status`: Strict status filtering in the shipment ledger.
+20. `test_literal_search_brackets_and_wildcards`: Regex-safe literal matching on brackets and wildcards.
+21. `test_case_insensitive_matching`: Consistent case-insensitive string matching.
 
 ---
 
@@ -199,6 +219,11 @@ pip install -r requirements.txt
 python -m unittest tests/test_logistics.py -v
 ```
 
+### Generating Simulation Results Table
+```bash
+python scripts/generate_simulation_table.py
+```
+
 ### Running the Dashboard
 ```bash
 streamlit run app.py
@@ -210,6 +235,7 @@ Open [http://localhost:8501](http://localhost:8501) in your browser.
 ## 9. Assumptions and Limitations
 
 1. **Simulation Range & Grain**: The transactional dataset spans a 1-year operational window. Each record represents a single requisition grain; multi-item bundled consignments are modeled as distinct requisitions.
-2. **Vehicle & Drone Fleet Capacity**: Drone nests have finite fleet sizes (18–32 drones per hub) modeled as queue prep delays during peak hours, but battery degradation over multi-year cycles is not simulated.
+2. **Vehicle & Drone Fleet Constraints**: Drone nest counts, vehicle fleet sizes, maximum payload capacities, and service radii are documented dimension attributes (`dim_hubs.csv`), but **are not yet enforced as dynamic queuing, queuing delay, or payload-splitting constraints in this data pass**.
 3. **Weather Disruption Approximations**: Seasonal monsoon effects are simulated as stochastic velocity penalties and ground-stop windows rather than dynamic Doppler radar grid integrations.
 4. **Data Preservation**: The supplied dataset in `data/fact_shipments.csv` is preserved. On-time flags are recomputed dynamically in `metrics_engine.py` against the single product SLA target. If regeneration is desired, running `python src/data_generator.py` will regenerate all tables using the updated uniform SLA logic.
+
