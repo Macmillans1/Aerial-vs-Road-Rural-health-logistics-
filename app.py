@@ -57,11 +57,15 @@ st.markdown("""
         -webkit-backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 14px;
-        padding: 18px 20px;
+        padding: 16px 20px;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
         transition: transform 0.2s ease, border-color 0.2s ease;
         position: relative;
         overflow: hidden;
+        min-height: 122px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     .metric-card:hover {
         transform: translateY(-2px);
@@ -84,26 +88,27 @@ st.markdown("""
     }
 
     .metric-title {
-        font-size: 0.78rem;
+        font-size: 0.80rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: #9CA3AF;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
     .metric-value {
-        font-size: 1.95rem;
+        font-size: 2.05rem;
         font-weight: 800;
         color: #FFFFFF;
         line-height: 1.1;
+        margin-bottom: 4px;
     }
     .metric-sub {
-        font-size: 0.76rem;
+        font-size: 0.80rem;
         color: #6EE7B7;
-        margin-top: 6px;
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
+        line-height: 1.3;
     }
     .metric-sub.negative {
         color: #FCA5A5;
@@ -308,49 +313,29 @@ def fmt_pct(val: Optional[float]) -> str:
 def fmt_hours(val: Optional[float]) -> str:
     return f"{val:.1f} hrs" if val is not None else "N/A"
 
-# Executive KPI Cards (Row of 6 metrics)
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+# Executive KPI Cards (Organized into two balanced 3-column rows for optimal fit)
+row1_col1, row1_col2, row1_col3 = st.columns(3)
 
-with col1:
+with row1_col1:
     st.markdown(f"""
         <div class="metric-card">
             <div class="metric-title">Total Requests</div>
             <div class="metric-value">{kpis.total_requests:,}</div>
-            <div class="metric-sub neutral">📦 Delivered: <b>{kpis.delivered_orders:,}</b></div>
+            <div class="metric-sub neutral">📦 Delivered: <b>{kpis.delivered_orders:,}</b> &nbsp;•&nbsp; Stock-outs: <b>{kpis.stock_outs:,}</b></div>
         </div>
     """, unsafe_allow_html=True)
 
-with col2:
+with row1_col2:
     deliv_rate_str = fmt_pct(kpis.delivery_success_rate_pct)
     st.markdown(f"""
         <div class="metric-card">
             <div class="metric-title">Delivery Success Rate</div>
             <div class="metric-value" style="color: #10B981;">{deliv_rate_str}</div>
-            <div class="metric-sub positive">✅ On-Time: <b>{kpis.on_time_orders:,}</b> | Late: <b>{kpis.delayed_orders:,}</b></div>
+            <div class="metric-sub positive">✅ On-Time: <b>{kpis.on_time_orders:,}</b> &nbsp;•&nbsp; Late: <b>{kpis.delayed_orders:,}</b></div>
         </div>
     """, unsafe_allow_html=True)
 
-with col3:
-    std_otif_str = fmt_pct(kpis.standard_otif_rate_pct)
-    st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Standard OTIF Rate</div>
-            <div class="metric-value" style="color: {'#10B981' if kpis.standard_otif_rate_pct and kpis.standard_otif_rate_pct >= 75 else '#F59E0B'};">{std_otif_str}</div>
-            <div class="metric-sub">🎯 On-Time & In-Full</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col4:
-    qual_otif_str = fmt_pct(kpis.quality_otif_rate_pct)
-    st.markdown(f"""
-        <div class="metric-card purple">
-            <div class="metric-title">Quality OTIF (OTIF-Q)</div>
-            <div class="metric-value" style="color: #A78BFA;">{qual_otif_str}</div>
-            <div class="metric-sub">❄️ Standard OTIF + Cold Integrity</div>
-        </div>
-    """, unsafe_allow_html=True)
-
-with col5:
+with row1_col3:
     avg_lt_str = f"{kpis.avg_lead_time_hours:.1f}" if kpis.avg_lead_time_hours is not None else "N/A"
     if kpis.drone_road_delta_hours is not None:
         delta_sub = f"⚡ Drone saves <b>{kpis.drone_road_delta_hours:.1f} hrs/trip</b> vs Road"
@@ -364,18 +349,42 @@ with col5:
     st.markdown(f"""
         <div class="metric-card gold">
             <div class="metric-title">Avg Order Cycle Time</div>
-            <div class="metric-value">{avg_lt_str} <span style="font-size: 1.0rem; font-weight: 500; color: #9CA3AF;">hrs</span></div>
+            <div class="metric-value">{avg_lt_str} <span style="font-size: 1.05rem; font-weight: 500; color: #9CA3AF;">hrs</span></div>
             <div class="metric-sub">{delta_sub}</div>
         </div>
     """, unsafe_allow_html=True)
 
-with col6:
+st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+
+row2_col1, row2_col2, row2_col3 = st.columns(3)
+
+with row2_col1:
+    std_otif_str = fmt_pct(kpis.standard_otif_rate_pct)
+    st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-title">Standard OTIF Rate</div>
+            <div class="metric-value" style="color: {'#10B981' if kpis.standard_otif_rate_pct and kpis.standard_otif_rate_pct >= 75 else '#F59E0B'};">{std_otif_str}</div>
+            <div class="metric-sub">🎯 Strict SLA: On-Time & In-Full</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with row2_col2:
+    qual_otif_str = fmt_pct(kpis.quality_otif_rate_pct)
+    st.markdown(f"""
+        <div class="metric-card purple">
+            <div class="metric-title">Quality OTIF (OTIF-Q)</div>
+            <div class="metric-value" style="color: #A78BFA;">{qual_otif_str}</div>
+            <div class="metric-sub">❄️ Standard OTIF + Thermal Compliance</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with row2_col3:
     cold_str = fmt_pct(kpis.cold_chain_integrity_pct)
     st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">Cold-Chain Integrity</div>
+            <div class="metric-title">Cold-Chain Thermal Integrity</div>
             <div class="metric-value" style="color: {'#10B981' if kpis.cold_chain_integrity_pct and kpis.cold_chain_integrity_pct >= 95 else '#F59E0B'};">{cold_str}</div>
-            <div class="metric-sub">❄️ Denom: Delivered Cold Items</div>
+            <div class="metric-sub">❄️ Denominator: Delivered Cold Items</div>
         </div>
     """, unsafe_allow_html=True)
 
