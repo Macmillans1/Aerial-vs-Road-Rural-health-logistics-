@@ -12,7 +12,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.metrics_engine import SupplyChainMetricsEngine, ExecutiveKPIs, filter_shipment_ledger
+from src.metrics_engine import (
+    SupplyChainMetricsEngine,
+    ExecutiveKPIs,
+    DataValidationError,
+    filter_shipment_ledger,
+)
 from src.map_visualizer import build_pydeck_logistics_map, build_plotly_geographic_scatter
 
 # -----------------------------------------------------------------------------
@@ -156,7 +161,11 @@ def get_metrics_engine() -> SupplyChainMetricsEngine:
     engine.load_data()
     return engine
 
-engine = get_metrics_engine()
+try:
+    engine = get_metrics_engine()
+except DataValidationError as exc:
+    st.error(f"❌ Data Validation Error: {exc}")
+    st.stop()
 
 
 # -----------------------------------------------------------------------------
@@ -425,7 +434,7 @@ with map_col1:
 
 with map_col2:
     if map_color_choice == "risk_tier":
-        legend_nodes_html = """<div style="font-weight: 600; color: #E2E8F0; margin: 10px 0 6px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Clinic Risk Classification</div>
+        legend_nodes_html = """<div style="font-weight: 600; color: #E2E8F0; margin: 10px 0 6px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Clinic Risk Classification (Demonstration Assumptions)</div>
 <div style="display: flex; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
     <span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border: 1.5px solid #FFFFFF; border-radius: 50%; margin-right: 8px; flex-shrink: 0;"></span>
     <span><b>Optimal Clinic</b> (Std OTIF &ge; 80%)</span>
@@ -844,16 +853,18 @@ with st.expander("📐 Technical Architecture, Star Schema & Methodological Note
       $$\\text{Standard OTIF} \\iff \\text{On-Time} \\land \\text{In-Full}$$
       $$\\text{Standard OTIF Rate (\\%)} = \\frac{\\sum (\\mathbb{I}(\\text{OnTime}) \\cdot \\mathbb{I}(\\text{InFull}))}{\\text{Total Requests}} \\times 100$$
     - **Quality-Adjusted OTIF (OTIF-Q)**:
-      $$\\text{OTIF-Q} \\iff \\text{Standard OTIF} \\land (\\neg \\text{ColdChainBreach})$$
+      $$\\text{OTIF-Q} \\iff \\text{Standard OTIF} \\land \\text{QualityPass}$$
+      *Quality-Adjusted OTIF strictly requires verified thermal compliance. Unverified items with missing telemetry fail OTIF-Q.*
 
     #### 3. Regional Bottleneck Composite Index
     Normalized against a stable operational reference of 12.0 hours (benchmark max acceptable lead time):
     $$\\text{Bottleneck Index} = 0.35 \\times \\text{StockOut\\%} + 0.35 \\times \\text{Delay\\%} + 20 \\times \\min\\left(1.0, \\frac{\\bar{T}_{\\text{lead}}}{12.0}\\right) + 0.10 \\times \\text{ColdBreach\\%}$$
 
-    #### 4. Operational Risk Threshold Rationale
-    - **Optimal Tier (Standard OTIF $\\ge 80\\%$)**: Aligns with WHO and humanitarian logistics targets where at least 4 out of 5 critical requisitions arrive strictly on-time and in-full.
-    - **Moderate Risk (Standard OTIF $65\\% \\le \\text{Rate} < 80\\%$)**: Represents an unstable operational corridor with elevated lead-time volatility requiring higher safety stock buffers.
-    - **High Risk (Standard OTIF $< 65\\%$ or Stockout Rate $> 8\\%$)**: Signifies severe delivery bottlenecks and stockouts that risk life-threatening gaps in anti-snake venom, emergency blood transfusion, and neonatal resuscitation.
+    #### 4. Operational Risk Threshold Rationale & Demonstration Assumptions
+    *The risk categorization thresholds below represent configurable demonstration and scenario analysis assumptions engineered for interactive operational drill-down across healthcare logistics models, rather than statutory clinical or regulatory mandates:*
+    - **Optimal Demonstration Benchmark (Standard OTIF $\\ge 80\\%$)**: Target reliability corridor where at least 4 out of 5 critical requisitions arrive strictly on-time and in-full.
+    - **Moderate Risk (Standard OTIF $65\\% \\le \\text{Rate} < 80\\%$)**: Represents an unstable intermediate operational corridor with elevated lead-time volatility requiring higher safety stock buffers.
+    - **High Risk (Standard OTIF $< 65\\%$ or Stockout Rate $> 8\\%$)**: Identifies severe delivery bottlenecks and stockout vulnerabilities for targeted resource reallocation (e.g., anti-snake venom, emergency blood transfusion, and neonatal resuscitation).
 
     #### 5. Fleet Model Scope Notice
     *Fleet capacity constraints (discrete vehicle counts), maximum payload weight limits, and service-radius eligibility criteria are recorded in dimension schemas but are not yet enforced in dispatch allocation logic.*

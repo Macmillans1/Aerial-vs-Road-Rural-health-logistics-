@@ -81,11 +81,18 @@ All transport modes (Drone and Road) are evaluated against the **same product ta
 - **Standard OTIF Rate**:
   $$\text{Standard OTIF (\%)} = \frac{\sum \left( \mathbb{I}(\text{OnTime}) \cdot \mathbb{I}(\text{InFull}) \right)}{N_{\text{total\_requests}}} \times 100$$
 - **Quality-Adjusted OTIF (OTIF-Q)**:
-  $$\text{OTIF-Q (\%)} = \frac{\sum \left( \mathbb{I}(\text{OnTime}) \cdot \mathbb{I}(\text{InFull}) \cdot \mathbb{I}(\neg \text{ColdChainBreach}) \right)}{N_{\text{total\_requests}}} \times 100$$
+  $$\text{OTIF-Q (\%)} = \frac{\sum \left( \mathbb{I}(\text{OnTime}) \cdot \mathbb{I}(\text{InFull}) \cdot \mathbb{I}(\text{QualityPass}) \right)}{N_{\text{total\_requests}}} \times 100$$
+  *Where $\text{QualityPass}$ requires verified thermal integrity ($\text{ColdChainBreach} = \text{False}$) for cold cargo, and defaults to True for ambient products. Requisitions with missing or unverified cold-chain telemetry evaluate to quality failure ($\text{QualityPass} = \text{False}$) to prevent unmonitored shipments from erroneously passing quality audits.*
 
-### 3. Cold-Chain Thermal Integrity
-Calculated strictly among **delivered cold-chain shipments** (excluding stock-outs where no transit took place and ambient cargo):
-$$\text{Cold-Chain Integrity (\%)} = \left( 1 - \frac{\sum \text{ColdBreaches}_{\text{delivered}}}{\text{Total Delivered Cold Shipments}} \right) \times 100$$
+### 3. Cold-Chain Thermal Integrity & Denominator Policy
+Calculated strictly among **delivered cold-chain shipments with known, verified sensor telemetry** (excluding stock-outs where no transit took place, ambient cargo, and unverified/null telemetry records):
+$$\text{Cold-Chain Breach Rate (\%)} = \frac{\sum \text{ColdBreaches}_{\text{delivered, verified}}}{N_{\text{delivered, verified cold}}} \times 100$$
+$$\text{Cold-Chain Integrity (\%)} = 100\% - \text{Cold-Chain Breach Rate (\%)} = \frac{\sum \text{Passes}_{\text{delivered, verified}}}{N_{\text{delivered, verified cold}}} \times 100$$
+
+*Denominator Policy*:
+- Packages with missing or unverified cold-chain sensor status ($\text{cold\_chain\_breach is null}$) are strictly excluded from the breach rate denominator to avoid falsely assuming unmonitored cargo maintained temperature compliance.
+- Unverified records are explicitly tracked and reported as `unknown_quality_cold_count`.
+- If an operational cohort contains zero verified cold-chain records, verified thermal rates evaluate to `N/A` rather than `0.00%`.
 
 ### 4. Regional Bottleneck Composite Index (0–100 Scale)
 Evaluated across 4 risk factors using a stable operational benchmark ($\bar{T}_{\text{benchmark}} = 12.0\text{ hours}$):
@@ -94,10 +101,11 @@ $$\text{Bottleneck Index} = 0.35 \times \text{StockOut\%} + 0.35 \times \text{De
 
 ---
 
-### 5. Operational Risk Threshold Rationale
-- **Optimal Tier (Standard OTIF $\ge 80\%$)**: Corresponds to international humanitarian logistics and WHO emergency target reliability where at least 4 out of 5 critical medical requisitions arrive strictly on-time and in-full.
-- **Moderate Risk (Standard OTIF $65\% \le \text{Rate} < 80\%$)**: Indicates an unstable operational corridor with elevated lead-time volatility requiring higher clinic buffer stock.
-- **High Risk (Standard OTIF $< 65\%$ or Stock-Out Rate $> 8\%$)**: Represents a critical supply bottleneck where frequent fulfillment failures or inventory depletion risk life-threatening delays for snakebite antivenom, emergency blood transfusion, and neonatal resuscitation.
+### 5. Configurable Demonstration Risk Classification Assumptions
+*The operational risk tiers modeled in the dashboard and metrics engine represent configurable demonstration and scenario analysis assumptions engineered for interactive operational drill-down across healthcare logistics models, rather than statutory clinical or regulatory mandates:*
+- **Optimal Demonstration Benchmark (Standard OTIF $\ge 80\%$)**: Target performance corridor modeled after humanitarian logistics best practices where at least 4 out of 5 critical requisitions arrive strictly on-time and in-full.
+- **Moderate Risk (Standard OTIF $65\% \le \text{Rate} < 80\%$)**: Represents an intermediate operational corridor with elevated lead-time volatility requiring higher safety stock buffers.
+- **High Risk (Standard OTIF $< 65\%$ or Stockout Rate $> 8\%$)**: Identifies severe delivery bottlenecks and stockout vulnerabilities for targeted resource reallocation (e.g., anti-snake venom, emergency blood transfusion, and neonatal resuscitation).
 
 ---
 
@@ -115,11 +123,12 @@ The headline metrics generated directly via the reproducible script [`scripts/ge
 | **Average Simulated Lead Time** | **2.03 hours** | **1.22 hours** | **5.79 hours** | **-4.57 hours (78.9% relative difference)** |
 | **Tier 3 (Deep Rural) Lead Time** | **2.75 hours** | **1.54 hours** | **12.30 hours** | **-10.76 hours (87.5% relative difference)** |
 | **Cold-Chain Breach Rate** | **3.31% (253 / 7,649)** | **1.03% (63 / 6,137)** | **12.57% (190 / 1,512)** | **-11.54 percentage points** |
+| **Unknown Quality Cold Cargo** | **0** | 0 | 0 | Missing/unverified telemetry |
 
 ### Stated Denominators & Methodological Notes:
 1. Requisitions ($N = 12,500$) represent all logged requests over a 1-year operational window.
 2. Lead times are calculated strictly over delivered orders ($N_{\text{delivered}} = 11,899$).
-3. Cold-chain breach rates are calculated only over delivered cold-chain orders with verified quality ($N_{\text{cold\_delivered}} = 7,649$). Missing quality values are treated as unknown, not as passes.
+3. Cold-chain breach rates are calculated strictly over delivered cold-chain orders with verified quality ($N_{\text{cold\_delivered, verified}} = 7,649$). Missing quality values are treated as unknown, excluded from the breach denominator, and fail Quality OTIF.
 4. Differences between percentage rates are expressed in **percentage points (pp)**. Differences in lead times represent differences in average simulated lead times across transport modes.
 5. Both modalities are evaluated against identical product SLA deadlines.
 

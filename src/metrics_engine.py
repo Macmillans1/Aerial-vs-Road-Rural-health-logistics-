@@ -65,7 +65,11 @@ def filter_shipment_ledger(
     df_result = df.copy()
 
     if status_filter and status_filter != "All Statuses":
-        if "order_status_display" in df_result.columns:
+        if "order_status_display" in df_result.columns and status_filter in df_result["order_status_display"].values:
+            df_result = df_result[df_result["order_status_display"] == status_filter]
+        elif "order_status" in df_result.columns and status_filter in df_result["order_status"].values:
+            df_result = df_result[df_result["order_status"] == status_filter]
+        elif "order_status_display" in df_result.columns:
             df_result = df_result[df_result["order_status_display"] == status_filter]
         elif "order_status" in df_result.columns:
             df_result = df_result[df_result["order_status"] == status_filter]
@@ -92,7 +96,8 @@ class SupplyChainMetricsEngine:
         "request_id", "clinic_id", "product_id", "hub_id",
         "requested_timestamp", "dispatch_timestamp", "delivery_timestamp",
         "distance_km", "transport_mode", "order_status",
-        "units_requested", "units_delivered", "lead_time_hours"
+        "units_requested", "units_delivered", "lead_time_hours",
+        "is_on_time", "cold_chain_breach", "weather_condition"
     }
 
     REQUIRED_CLINIC_COLS = {
@@ -102,7 +107,7 @@ class SupplyChainMetricsEngine:
 
     REQUIRED_PRODUCT_COLS = {
         "product_id", "product_name", "category",
-        "storage_requirement", "target_delivery_hours"
+        "storage_requirement", "target_delivery_hours", "unit_cost_usd"
     }
 
     REQUIRED_HUB_COLS = {
@@ -128,12 +133,16 @@ class SupplyChainMetricsEngine:
         """Validate raw datasets before relational joins.
 
         Enforces:
-        - Required schema columns in fact and dimension tables
+        - Required schema columns across fact and dimension tables (including financial and thermal fields)
         - Unique and non-null primary keys
         - Referential foreign key integrity
-        - Logical chronological ordering of timestamps
-        - Quantity consistency across delivery statuses
-        - Non-negative physical metrics (distance, lead time)
+        - Non-null, parseable request timestamps for all transactions
+        - Valid dispatch and delivery timestamps for all delivered records
+        - Strict chronological timestamp ordering (Request <= Dispatch <= Delivery)
+        - Numeric types, finite values, positive requested quantities, and non-negative delivered quantities
+        - Rejection of unapproved overdelivery (units_delivered > units_requested)
+        - Stock-out delivered quantity consistency (units_delivered == 0)
+        - Non-negative physical metrics (distance, lead time, unit cost)
         """
         # 1. Required column validation
         fact_missing = cls.REQUIRED_FACT_COLS - set(df_fact.columns)
@@ -153,18 +162,18 @@ class SupplyChainMetricsEngine:
             raise DataValidationError(f"dim_hubs missing required columns: {sorted(hub_missing)}")
 
         # 2. Primary Key non-null and uniqueness
-        for df, pk, table_name in [
+        for df_t, pk, table_name in [
             (df_fact, "request_id", "fact_shipments"),
             (df_clinics, "clinic_id", "dim_clinics"),
             (df_products, "product_id", "dim_products"),
             (df_hubs, "hub_id", "dim_hubs"),
         ]:
-            if df[pk].isna().any():
-                null_count = int(df[pk].isna().sum())
+            if df_t[pk].isna().any():
+                null_count = int(df_t[pk].isna().sum())
                 raise DataValidationError(f"{table_name} has {null_count} null primary key entries in column '{pk}'.")
-            if df[pk].duplicated().any():
-                dup_count = int(df[pk].duplicated().sum())
-                dup_samples = df[pk][df[pk].duplicated()].head(3).tolist()
+            if df_t[pk].duplicated().any():
+                dup_count = int(df_t[pk].duplicated().sum())
+                dup_samples = df_t[pk][df_t[pk].duplicated()].head(3).tolist()
                 raise DataValidationError(
                     f"{table_name} has {dup_count} duplicate primary key values in '{pk}' (e.g. {dup_samples})."
                 )
@@ -197,41 +206,104 @@ class SupplyChainMetricsEngine:
                 f"dim_clinics contains invalid 'nearest_hub' foreign keys: {sorted(list(clinic_invalid_hubs))}"
             )
 
-        # 4. Quantity consistency
-        stockouts = df_fact[df_fact["order_status"] == "Stock-Out"]
-        if (stockouts["units_delivered"] != 0).any():
-            invalid_cnt = int((stockouts["units_delivered"] != 0).sum())
-            raise DataValidationError(f"Quantity error: {invalid_cnt} Stock-Out shipments have units_delivered != 0.")
+        # 4. Timestamp completeness and parseability
+        if df_fact["requested_timestamp"].isna().any():
+            bad_cnt = int(df_fact["requested_timestamp"].isna().sum())
+            raise DataValidationError(f"Timestamp error: fact_shipments contains {bad_cnt} missing requested_timestamp values.")
 
-        if (df_fact["units_requested"] <= 0).any():
-            invalid_cnt = int((df_fact["units_requested"] <= 0).sum())
-            raise DataValidationError(f"Quantity error: {invalid_cnt} shipments have units_requested <= 0.")
+        req_parsed = pd.to_datetime(df_fact["requested_timestamp"], errors="coerce")
+        if req_parsed.isna().any():
+            bad_cnt = int(req_parsed.isna().sum())
+            raise DataValidationError(f"Timestamp error: fact_shipments contains {bad_cnt} unparseable requested_timestamp values.")
 
         delivered = df_fact[df_fact["order_status"].isin(["Fulfilled", "Delayed"])]
+        if delivered["dispatch_timestamp"].isna().any():
+            bad_cnt = int(delivered["dispatch_timestamp"].isna().sum())
+            raise DataValidationError(f"Timestamp error: {bad_cnt} delivered shipments have missing dispatch_timestamp.")
+
+        disp_parsed = pd.to_datetime(delivered["dispatch_timestamp"], errors="coerce")
+        if disp_parsed.isna().any():
+            bad_cnt = int(disp_parsed.isna().sum())
+            raise DataValidationError(f"Timestamp error: {bad_cnt} delivered shipments have unparseable dispatch_timestamp.")
+
+        if delivered["delivery_timestamp"].isna().any():
+            bad_cnt = int(delivered["delivery_timestamp"].isna().sum())
+            raise DataValidationError(f"Timestamp error: {bad_cnt} delivered shipments have missing delivery_timestamp.")
+
+        deliv_parsed = pd.to_datetime(delivered["delivery_timestamp"], errors="coerce")
+        if deliv_parsed.isna().any():
+            bad_cnt = int(deliv_parsed.isna().sum())
+            raise DataValidationError(f"Timestamp error: {bad_cnt} delivered shipments have unparseable delivery_timestamp.")
+
+        # 5. Timestamp chronology (strictly validated after completeness)
+        req_deliv_parsed = req_parsed.loc[delivered.index]
+        if (disp_parsed < req_deliv_parsed).any():
+            bad_cnt = int((disp_parsed < req_deliv_parsed).sum())
+            raise DataValidationError(f"Timestamp chronology error: {bad_cnt} delivered shipments have dispatch_timestamp < requested_timestamp.")
+
+        if (deliv_parsed < disp_parsed).any():
+            bad_cnt = int((deliv_parsed < disp_parsed).sum())
+            raise DataValidationError(f"Timestamp chronology error: {bad_cnt} delivered shipments have delivery_timestamp < dispatch_timestamp.")
+
+        # 6. Quantity validations and overdelivery policy
+        req_num = pd.to_numeric(df_fact["units_requested"], errors="coerce")
+        if req_num.isna().any() or np.isinf(req_num).any():
+            raise DataValidationError("Data type error: units_requested contains missing, non-numeric, or infinite values.")
+        if (req_num <= 0).any():
+            bad_cnt = int((req_num <= 0).sum())
+            raise DataValidationError(f"Quantity error: {bad_cnt} shipments have non-positive units_requested (<= 0).")
+
+        del_num = pd.to_numeric(df_fact["units_delivered"], errors="coerce")
+        if del_num.isna().any() or np.isinf(del_num).any():
+            raise DataValidationError("Data type error: units_delivered contains missing, non-numeric, or infinite values.")
+        if (del_num < 0).any():
+            bad_cnt = int((del_num < 0).sum())
+            raise DataValidationError(f"Quantity error: {bad_cnt} shipments have negative units_delivered (< 0).")
+
+        # Reject unapproved overdelivery
+        if (del_num > req_num).any():
+            bad_cnt = int((del_num > req_num).sum())
+            raise DataValidationError(
+                f"Quantity error: {bad_cnt} shipments have units_delivered > units_requested; system policy prohibits unapproved overdelivery."
+            )
+
+        stockouts = df_fact[df_fact["order_status"] == "Stock-Out"]
+        if (stockouts["units_delivered"] != 0).any():
+            bad_cnt = int((stockouts["units_delivered"] != 0).sum())
+            raise DataValidationError(f"Quantity error: {bad_cnt} Stock-Out shipments have units_delivered != 0.")
+
         if (delivered["units_delivered"] <= 0).any():
-            invalid_cnt = int((delivered["units_delivered"] <= 0).sum())
-            raise DataValidationError(f"Quantity error: {invalid_cnt} delivered shipments have units_delivered <= 0.")
+            bad_cnt = int((delivered["units_delivered"] <= 0).sum())
+            raise DataValidationError(f"Quantity error: {bad_cnt} delivered shipments have units_delivered <= 0.")
 
-        # 5. Timestamp chronology for delivered shipments
-        req_dt = pd.to_datetime(delivered["requested_timestamp"], errors="coerce")
-        disp_dt = pd.to_datetime(delivered["dispatch_timestamp"], errors="coerce")
-        deliv_dt = pd.to_datetime(delivered["delivery_timestamp"], errors="coerce")
+        # 7. Physical metrics and dimension attribute validations
+        dist_num = pd.to_numeric(df_fact["distance_km"], errors="coerce")
+        if dist_num.isna().any() or np.isinf(dist_num).any():
+            raise DataValidationError("Data type error: distance_km contains missing, non-numeric, or infinite values.")
+        if (dist_num < 0).any():
+            raise DataValidationError("Physical metric error: distance_km cannot contain negative values.")
 
-        if (disp_dt < req_dt).any():
-            invalid_cnt = int((disp_dt < req_dt).sum())
-            raise DataValidationError(f"Timestamp error: {invalid_cnt} shipments have dispatch_timestamp < requested_timestamp.")
+        lead_num = pd.to_numeric(delivered["lead_time_hours"], errors="coerce")
+        if lead_num.isna().any() or np.isinf(lead_num).any():
+            raise DataValidationError("Data type error: delivered shipments contain missing, non-numeric, or infinite lead_time_hours.")
+        if (lead_num < 0).any():
+            raise DataValidationError("Physical metric error: lead_time_hours cannot contain negative values for delivered shipments.")
 
-        if (deliv_dt < disp_dt).any():
-            invalid_cnt = int((deliv_dt < disp_dt).sum())
-            raise DataValidationError(f"Timestamp error: {invalid_cnt} shipments have delivery_timestamp < dispatch_timestamp.")
+        cost_num = pd.to_numeric(df_products["unit_cost_usd"], errors="coerce")
+        if cost_num.isna().any() or np.isinf(cost_num).any() or (cost_num < 0).any():
+            raise DataValidationError("Product dimension error: unit_cost_usd must be numeric, finite, and non-negative.")
 
-        # 6. Physical metrics sanity
-        if (df_fact["distance_km"] < 0).any():
-            raise DataValidationError("distance_km cannot contain negative values.")
+        sla_num = pd.to_numeric(df_products["target_delivery_hours"], errors="coerce")
+        if sla_num.isna().any() or np.isinf(sla_num).any() or (sla_num <= 0).any():
+            raise DataValidationError("Product dimension error: target_delivery_hours must be numeric, finite, and strictly positive (> 0).")
 
-        deliv_lead = delivered["lead_time_hours"].dropna()
-        if (deliv_lead < 0).any():
-            raise DataValidationError("lead_time_hours cannot contain negative values for delivered shipments.")
+        for df_geo, geo_name in [(df_clinics, "dim_clinics"), (df_hubs, "dim_hubs")]:
+            lat_num = pd.to_numeric(df_geo["latitude"], errors="coerce")
+            lon_num = pd.to_numeric(df_geo["longitude"], errors="coerce")
+            if lat_num.isna().any() or lon_num.isna().any():
+                raise DataValidationError(f"{geo_name} contains non-numeric latitude or longitude coordinates.")
+            if (lat_num < -90).any() or (lat_num > 90).any() or (lon_num < -180).any() or (lon_num > 180).any():
+                raise DataValidationError(f"{geo_name} contains out-of-range geographical coordinates.")
 
     def load_data(self) -> "SupplyChainMetricsEngine":
         """Load fact and dimension tables from CSV storage and build analytical star-schema."""
@@ -535,23 +607,58 @@ class SupplyChainMetricsEngine:
 
     @staticmethod
     def get_modal_comparison(df: pd.DataFrame) -> pd.DataFrame:
-        """Compare lead times, distance, and OTIF rates across transport modes and distance bands."""
+        """Compare lead times, distance, and OTIF rates across transport modes and distance bands.
+
+        Quality Denominator Policy:
+        - Cold-chain breach percentage is calculated strictly over delivered cold-chain items with
+          known verified quality (storage_requirement == 'Cold Chain' and cold_chain_breach.notna()).
+        - Records with missing/unknown cold-chain breach status are excluded from the breach rate
+          denominator to avoid assuming unverified items passed, and tracked separately as unknown_quality_cold_count.
+        """
         delivered_df = df[df["is_delivered"]].copy()
         if len(delivered_df) == 0:
             return pd.DataFrame()
 
-        grouped = delivered_df.groupby(["distance_band", "transport_mode"], observed=True).agg(
-            shipment_count=("request_id", "count"),
-            avg_lead_time_hours=("lead_time_hours", "mean"),
-            median_lead_time_hours=("lead_time_hours", "median"),
-            standard_otif_rate_pct=("is_standard_otif", lambda s: (s.sum() / len(s)) * 100.0),
-            quality_otif_rate_pct=("is_quality_otif", lambda s: (s.sum() / len(s)) * 100.0),
-            cold_chain_breach_pct=("cold_chain_breach", lambda s: (s.sum() / len(s)) * 100.0),
-            avg_distance_km=("distance_km", "mean"),
-        ).reset_index()
+        records = []
+        for (dist_band, mode), group in delivered_df.groupby(["distance_band", "transport_mode"], observed=True):
+            shipment_count = len(group)
+            avg_lead_time_hours = group["lead_time_hours"].mean()
+            median_lead_time_hours = group["lead_time_hours"].median()
+            standard_otif_rate_pct = (group["is_standard_otif"].sum() / shipment_count) * 100.0 if shipment_count > 0 else 0.0
+            quality_otif_rate_pct = (group["is_quality_otif"].sum() / shipment_count) * 100.0 if shipment_count > 0 else 0.0
 
-        grouped["effective_speed_kmh"] = grouped["avg_distance_km"] / grouped["avg_lead_time_hours"]
-        return grouped
+            # Verified cold chain denominator policy
+            cold_group = group[group["storage_requirement"] == "Cold Chain"]
+            known_cold = cold_group[cold_group["cold_chain_breach"].notna()]
+            unknown_quality_cold_count = int(cold_group["cold_chain_breach"].isna().sum())
+
+            if len(known_cold) > 0:
+                cold_chain_breach_pct = round(((known_cold["cold_chain_breach"] == True).sum() / len(known_cold)) * 100.0, 2)
+            else:
+                cold_chain_breach_pct = None
+
+            avg_distance_km = group["distance_km"].mean()
+            effective_speed_kmh = (
+                avg_distance_km / avg_lead_time_hours
+                if avg_lead_time_hours and avg_lead_time_hours > 0
+                else 0.0
+            )
+
+            records.append({
+                "distance_band": dist_band,
+                "transport_mode": mode,
+                "shipment_count": shipment_count,
+                "avg_lead_time_hours": round(avg_lead_time_hours, 2),
+                "median_lead_time_hours": round(median_lead_time_hours, 2),
+                "standard_otif_rate_pct": round(standard_otif_rate_pct, 2),
+                "quality_otif_rate_pct": round(quality_otif_rate_pct, 2),
+                "cold_chain_breach_pct": cold_chain_breach_pct,
+                "unknown_quality_cold_count": unknown_quality_cold_count,
+                "avg_distance_km": round(avg_distance_km, 2),
+                "effective_speed_kmh": round(effective_speed_kmh, 2),
+            })
+
+        return pd.DataFrame(records)
 
     @staticmethod
     def get_stockout_diagnostics(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -615,6 +722,7 @@ class SupplyChainMetricsEngine:
 
             cold_delivered = delivered[delivered["storage_requirement"] == "Cold Chain"]
             known_cold = cold_delivered[cold_delivered["cold_chain_breach"].notna()]
+            unknown_quality_count = int(cold_delivered["cold_chain_breach"].isna().sum())
             cold_breach_rate = (
                 ((known_cold["cold_chain_breach"] == True).sum() / len(known_cold)) * 100.0
                 if len(known_cold) > 0
@@ -644,6 +752,7 @@ class SupplyChainMetricsEngine:
                 "delay_rate": round(delay_rate, 1),
                 "avg_lead_time_hours": round(avg_lead_time, 2) if pd.notna(avg_lead_time) else np.nan,
                 "cold_breach_rate": round(cold_breach_rate, 1),
+                "unknown_quality_cold_count": unknown_quality_count,
                 "drone_share_pct": round(drone_share, 1),
                 "bottleneck_score": bottleneck_score,
             })
@@ -688,11 +797,12 @@ class SupplyChainMetricsEngine:
             (clinic_agg["quality_otif"] / clinic_agg["total_orders"]) * 100.0
         ).round(1)
 
-        # Risk tier categorization rationale:
-        # Standard OTIF < 65% represents a critical supply failure rate.
-        # Stockouts > 8% signifies severe localized inventory depletion.
-        # 65% - 80% represents an unstable intermediate operational buffer.
-        # >= 80% aligns with humanitarian healthcare distribution benchmarks.
+        # Configurable Demonstration Risk Classification Assumptions:
+        # (Heuristic operational risk tiers modeled for portfolio visualization and drill-down;
+        # not statutory clinical or regulatory standards):
+        # - Standard OTIF < 65% or Stockouts > 8%: High Risk (significant delivery vulnerability)
+        # - 65% <= Standard OTIF < 80%: Moderate Risk (elevated transit delay volatility)
+        # - Standard OTIF >= 80%: Optimal demonstration performance benchmark
         def assign_risk(row: pd.Series) -> str:
             stockout_freq = row["stock_outs"] / row["total_orders"] if row["total_orders"] > 0 else 0
             if row["standard_otif_rate_pct"] < 65.0 or stockout_freq > 0.08:

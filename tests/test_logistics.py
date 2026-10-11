@@ -14,6 +14,7 @@ Covers:
 """
 
 import os
+import tempfile
 import unittest
 import numpy as np
 import pandas as pd
@@ -331,37 +332,117 @@ class TestUnknownColdChainHandling(unittest.TestCase):
     """Test suite verifying missing cold-chain records are handled as unknown rather than quality passes."""
 
     def test_missing_cold_chain_breach_treated_as_unknown(self):
-        """Ensure null cold_chain_breach evaluates to is_quality_pass=False and quality_known=False."""
-        engine = SupplyChainMetricsEngine(data_dir="data")
-        engine.load_data()
-        df = engine.df_master.copy()
+        """Ensure null cold_chain_breach evaluates to is_quality_pass=False and quality_known=False via load_data()."""
+        df_fact = pd.read_csv("data/fact_shipments.csv")
+        df_clinics = pd.read_csv("data/dim_clinics.csv")
+        df_products = pd.read_csv("data/dim_products.csv")
+        df_hubs = pd.read_csv("data/dim_hubs.csv")
 
-        # Find delivered cold-chain records
-        delivered_cold_mask = df["is_delivered"] & (df["storage_requirement"] == "Cold Chain")
+        # Identify delivered cold-chain records
+        cold_prod_ids = set(df_products[df_products["storage_requirement"] == "Cold Chain"]["product_id"])
+        delivered_cold_mask = (df_fact["order_status"].isin(["Fulfilled", "Delayed"])) & (
+            df_fact["product_id"].isin(cold_prod_ids)
+        )
         self.assertTrue(delivered_cold_mask.any())
 
-        # Allow nullable entries by casting cold_chain_breach to object
-        df["cold_chain_breach"] = df["cold_chain_breach"].astype(object)
-        target_indices = df[delivered_cold_mask].index[:10]
-        df.loc[target_indices, "cold_chain_breach"] = np.nan
+        corrupt_fact = df_fact.copy()
+        corrupt_fact["cold_chain_breach"] = corrupt_fact["cold_chain_breach"].astype(object)
+        target_indices = corrupt_fact[delivered_cold_mask].index[:10]
+        corrupt_fact.loc[target_indices, "cold_chain_breach"] = np.nan
 
-        # Re-derive quality flags using the exact metrics_engine logic
-        is_cold = df["storage_requirement"] == "Cold Chain"
-        df["quality_known"] = ~is_cold | df["cold_chain_breach"].notna()
-        df["is_quality_pass"] = np.where(
-            ~is_cold,
-            True,
-            df["cold_chain_breach"] == False
-        )
-        df["is_quality_otif"] = df["is_delivered"] & df["is_on_time"] & df["is_quality_pass"]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            corrupt_fact.to_csv(os.path.join(temp_dir, "fact_shipments.csv"), index=False)
+            df_clinics.to_csv(os.path.join(temp_dir, "dim_clinics.csv"), index=False)
+            df_products.to_csv(os.path.join(temp_dir, "dim_products.csv"), index=False)
+            df_hubs.to_csv(os.path.join(temp_dir, "dim_hubs.csv"), index=False)
 
-        # The target indices must NOT be quality pass
-        self.assertFalse(df.loc[target_indices, "is_quality_pass"].any(), "NaN cold chain breach was treated as pass!")
-        self.assertFalse(df.loc[target_indices, "quality_known"].any(), "NaN cold chain breach was treated as known!")
+            # Let the metrics engine derive features end-to-end without duplicated test logic
+            engine = SupplyChainMetricsEngine(data_dir=temp_dir).load_data()
+            df = engine.df_master
 
-        # Check KPI computation
-        kpis = engine.compute_executive_kpis(df)
-        self.assertEqual(kpis.unknown_quality_cold_orders, 10, "KPI did not report 10 unknown quality cold orders")
+            target_req_ids = corrupt_fact.loc[target_indices, "request_id"].tolist()
+            target_rows = df[df["request_id"].isin(target_req_ids)]
+
+            self.assertFalse(target_rows["is_quality_pass"].any(), "NaN cold chain breach was treated as quality pass!")
+            self.assertFalse(target_rows["quality_known"].any(), "NaN cold chain breach was treated as known quality!")
+            self.assertFalse(target_rows["is_quality_otif"].any(), "NaN cold chain breach was treated as quality OTIF!")
+
+            # Check KPI computation
+            kpis = engine.compute_executive_kpis(df)
+            self.assertEqual(kpis.unknown_quality_cold_orders, 10, "KPI did not report 10 unknown quality cold orders")
+
+            # Check regional bottlenecks computation executes without error and tracks unknown counts
+            reg_df = engine.get_regional_bottlenecks(df)
+            self.assertGreater(len(reg_df), 0)
+            self.assertIn("unknown_quality_cold_count", reg_df.columns)
+            self.assertEqual(reg_df["unknown_quality_cold_count"].sum(), 10)
+
+
+class TestTemporaryCSVValidation(unittest.TestCase):
+    """Test suite calling load_data() on temporary CSV directories to verify end-to-end dataset validation."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.df_fact = pd.read_csv("data/fact_shipments.csv")
+        cls.df_clinics = pd.read_csv("data/dim_clinics.csv")
+        cls.df_products = pd.read_csv("data/dim_products.csv")
+        cls.df_hubs = pd.read_csv("data/dim_hubs.csv")
+
+    def _write_temp_bundle(self, temp_dir, fact=None, clinics=None, products=None, hubs=None):
+        (fact if fact is not None else self.df_fact).to_csv(os.path.join(temp_dir, "fact_shipments.csv"), index=False)
+        (clinics if clinics is not None else self.df_clinics).to_csv(os.path.join(temp_dir, "dim_clinics.csv"), index=False)
+        (products if products is not None else self.df_products).to_csv(os.path.join(temp_dir, "dim_products.csv"), index=False)
+        (hubs if hubs is not None else self.df_hubs).to_csv(os.path.join(temp_dir, "dim_hubs.csv"), index=False)
+
+    def test_load_data_invalid_timestamp_raises_error(self):
+        """Calling load_data() with inverted timestamps raises DataValidationError."""
+        corrupt_fact = self.df_fact.copy()
+        fulfilled_idx = corrupt_fact[corrupt_fact["order_status"] == "Fulfilled"].index[0]
+        corrupt_fact.loc[fulfilled_idx, "dispatch_timestamp"] = "2025-06-01 12:00:00"
+        corrupt_fact.loc[fulfilled_idx, "requested_timestamp"] = "2025-06-02 12:00:00"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._write_temp_bundle(temp_dir, fact=corrupt_fact)
+            engine = SupplyChainMetricsEngine(data_dir=temp_dir)
+            with self.assertRaises(DataValidationError) as ctx:
+                engine.load_data()
+            self.assertIn("dispatch_timestamp < requested_timestamp", str(ctx.exception))
+
+    def test_load_data_missing_timestamp_raises_error(self):
+        """Calling load_data() with null requested_timestamp raises DataValidationError."""
+        corrupt_fact = self.df_fact.copy()
+        corrupt_fact.loc[0, "requested_timestamp"] = np.nan
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._write_temp_bundle(temp_dir, fact=corrupt_fact)
+            engine = SupplyChainMetricsEngine(data_dir=temp_dir)
+            with self.assertRaises(DataValidationError) as ctx:
+                engine.load_data()
+            self.assertIn("missing requested_timestamp", str(ctx.exception).lower())
+
+    def test_load_data_excessive_quantities_raises_error(self):
+        """Calling load_data() with units_delivered > units_requested raises DataValidationError."""
+        corrupt_fact = self.df_fact.copy()
+        fulfilled_idx = corrupt_fact[corrupt_fact["order_status"] == "Fulfilled"].index[0]
+        corrupt_fact.loc[fulfilled_idx, "units_delivered"] = corrupt_fact.loc[fulfilled_idx, "units_requested"] + 25
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._write_temp_bundle(temp_dir, fact=corrupt_fact)
+            engine = SupplyChainMetricsEngine(data_dir=temp_dir)
+            with self.assertRaises(DataValidationError) as ctx:
+                engine.load_data()
+            self.assertIn("overdelivery", str(ctx.exception).lower())
+
+    def test_load_data_missing_required_columns_raises_error(self):
+        """Calling load_data() with missing required dimension column raises DataValidationError."""
+        corrupt_products = self.df_products.drop(columns=["storage_requirement"])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self._write_temp_bundle(temp_dir, products=corrupt_products)
+            engine = SupplyChainMetricsEngine(data_dir=temp_dir)
+            with self.assertRaises(DataValidationError) as ctx:
+                engine.load_data()
+            self.assertIn("missing required columns", str(ctx.exception).lower())
 
 
 class TestShipmentLedgerSearch(unittest.TestCase):
@@ -394,6 +475,20 @@ class TestShipmentLedgerSearch(unittest.TestCase):
         res_upper = filter_shipment_ledger(self.engine.df_master, search_query="OMENAKO")
         self.assertEqual(len(res_lower), len(res_upper))
         self.assertGreater(len(res_lower), 0)
+
+    def test_ui_status_labels_exact_counts(self):
+        """Assert exact expected counts for UI status filter labels on the supplied dataset."""
+        df_ontime = filter_shipment_ledger(self.engine.df_master, status_filter="Delivered (On-Time)")
+        self.assertEqual(len(df_ontime), 8653, "Expected exactly 8,653 Delivered (On-Time) records")
+
+        df_delayed = filter_shipment_ledger(self.engine.df_master, status_filter="Delivered (Delayed)")
+        self.assertEqual(len(df_delayed), 3246, "Expected exactly 3,246 Delivered (Delayed) records")
+
+        df_stockout = filter_shipment_ledger(self.engine.df_master, status_filter="Stock-Out")
+        self.assertEqual(len(df_stockout), 601, "Expected exactly 601 Stock-Out records")
+
+        # Partition exhaustiveness check: 8,653 + 3,246 + 601 == 12,500
+        self.assertEqual(len(df_ontime) + len(df_delayed) + len(df_stockout), len(self.engine.df_master))
 
 
 if __name__ == "__main__":

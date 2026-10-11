@@ -35,8 +35,8 @@ def build_pydeck_logistics_map(
 ) -> Tuple[pdk.Deck, List[str]]:
     """Construct an interactive PyDeck 3D map featuring hubs, clinics, and illustrative corridors.
 
-    Distinguishes active hubs (with dispatches in filtered view) from configured hubs.
-    Preserves verified hub relationships and flags unresolvable clinics without fallback defaulting.
+    Distinguishes active hubs (with actual dispatches in filtered view, excluding stockouts)
+    from configured hubs. Provides dedicated, relevant tooltips for clinics, hubs, and routes.
 
     Returns:
         Tuple[pdk.Deck, List[str]]: The Deck object and a list of clinic names with unmapped hubs.
@@ -48,10 +48,14 @@ def build_pydeck_logistics_map(
     if df_hubs is not None and len(df_hubs) > 0:
         df_hubs_map = df_hubs.copy()
 
-        # Count dispatches in the current active filter
+        # Count actual dispatches using valid dispatch_timestamp values (strictly excluding stock-outs)
         hub_counts = {}
         if df_filtered is not None and len(df_filtered) > 0 and "hub_id" in df_filtered.columns:
-            hub_counts = df_filtered["hub_id"].value_counts().to_dict()
+            if "dispatch_timestamp" in df_filtered.columns:
+                dispatched_records = df_filtered[df_filtered["dispatch_timestamp"].notna()]
+            else:
+                dispatched_records = df_filtered[df_filtered["order_status"] != "Stock-Out"]
+            hub_counts = dispatched_records["hub_id"].value_counts().to_dict()
 
         df_hubs_map["dispatches_in_filter"] = df_hubs_map["hub_id"].map(lambda h: hub_counts.get(h, 0))
         df_hubs_map["is_active"] = df_hubs_map["dispatches_in_filter"] > 0
@@ -63,7 +67,17 @@ def build_pydeck_logistics_map(
         )
         df_hubs_map["radius"] = df_hubs_map["is_active"].map(lambda a: 14000 if a else 9000)
 
-        # Active hubs layer
+        # Dedicated hub tooltip containing only relevant hub fields
+        df_hubs_map["tooltip_html"] = df_hubs_map.apply(
+            lambda r: f"""<div style="background-color: #111827; color: #F3F4F6; padding: 10px 14px; border-radius: 8px; border: 1px solid #374151; font-family: sans-serif; font-size: 12px; line-height: 1.5; box-shadow: 0 8px 16px rgba(0,0,0,0.5);">
+    <div style="font-weight: 700; font-size: 13px; color: #00D2BA; margin-bottom: 4px;">{r['hub_name']} (Distribution Hub)</div>
+    <div><b>Region:</b> {r['region']}</div>
+    <div><b>Status:</b> {r['hub_status']}</div>
+    <div><b>Actual Dispatches in View:</b> {r['dispatches_in_filter']:,}</div>
+</div>""",
+            axis=1,
+        )
+
         active_hubs_layer = pdk.Layer(
             "ScatterplotLayer",
             id="distribution-hubs-layer",
@@ -93,6 +107,22 @@ def build_pydeck_logistics_map(
                 lambda t: PALETTE.get(t, [150, 150, 150, 200])
             )
 
+        # Dedicated clinic tooltip containing only relevant clinic performance fields
+        df_clinics_map["tooltip_html"] = df_clinics_map.apply(
+            lambda r: f"""<div style="background-color: #111827; color: #F3F4F6; padding: 10px 14px; border-radius: 8px; border: 1px solid #374151; font-family: sans-serif; font-size: 12px; line-height: 1.5; box-shadow: 0 8px 16px rgba(0,0,0,0.5);">
+    <div style="font-weight: 700; font-size: 13px; color: #00D2BA; margin-bottom: 4px;">{r.get('clinic_name', r.get('clinic_id', 'Clinic'))}</div>
+    <div><b>Region:</b> {r.get('region', 'N/A')}</div>
+    <div><b>Accessibility:</b> {r.get('remote_tier', 'N/A')}</div>
+    <div><b>Risk Tier:</b> {r.get('risk_tier', 'N/A')}</div>
+    <div><b>Assigned Hub:</b> {r.get('nearest_hub', 'N/A')}</div>
+    <div><b>Standard OTIF:</b> <span style="color: #10B981; font-weight: 700;">{r.get('standard_otif_rate_pct', 'N/A')}%</span></div>
+    <div><b>Quality OTIF:</b> {r.get('quality_otif_rate_pct', 'N/A')}%</div>
+    <div><b>Avg Lead Time:</b> {r.get('avg_lead_time_hours', 'N/A')} hrs</div>
+    <div><b>Total Requests:</b> {r.get('total_orders', 0):,} (Stockouts: {r.get('stock_outs', 0):,})</div>
+</div>""",
+            axis=1,
+        )
+
         clinic_layer = pdk.Layer(
             "ScatterplotLayer",
             id="clinics-endpoints-layer",
@@ -120,16 +150,27 @@ def build_pydeck_logistics_map(
                     continue
 
                 hub = hubs_lookup[hub_id]
+                c_name = clinic.get("clinic_name", "Clinic")
+                h_name = hub.get("hub_name", "Hub")
+                c_otif = clinic.get("standard_otif_rate_pct", 0.0)
+
                 arc_records.append({
                     "source_lon": hub["longitude"],
                     "source_lat": hub["latitude"],
                     "target_lon": clinic["longitude"],
                     "target_lat": clinic["latitude"],
-                    "clinic_name": clinic["clinic_name"],
-                    "hub_name": hub["hub_name"],
-                    "otif": clinic.get("standard_otif_rate_pct", 0.0),
+                    "clinic_name": c_name,
+                    "hub_name": h_name,
+                    "otif": c_otif,
                     "color_start": [0, 210, 186, 160],
                     "color_end": [239, 68, 68, 160] if clinic.get("risk_tier") == "High Risk" else [16, 185, 129, 140],
+                    "tooltip_html": f"""<div style="background-color: #111827; color: #F3F4F6; padding: 10px 14px; border-radius: 8px; border: 1px solid #374151; font-family: sans-serif; font-size: 12px; line-height: 1.5; box-shadow: 0 8px 16px rgba(0,0,0,0.5);">
+    <div style="font-weight: 700; font-size: 13px; color: #00D2BA; margin-bottom: 4px;">Supply Routing Corridor</div>
+    <div><b>Fulfillment Hub:</b> {h_name}</div>
+    <div><b>Destination Clinic:</b> {c_name}</div>
+    <div><b>Destination Std OTIF:</b> {c_otif}%</div>
+    <div style="font-size: 10px; color: #9CA3AF; margin-top: 4px; border-top: 1px solid #374151; padding-top: 4px;">* Corridors represent illustrative logistical links.</div>
+</div>""",
                 })
 
             if len(arc_records) > 0:
@@ -157,19 +198,7 @@ def build_pydeck_logistics_map(
     )
 
     tooltip = {
-        "html": """
-        <div style="background-color: #111827; color: #F3F4F6; padding: 10px 14px; border-radius: 8px; border: 1px solid #374151; font-family: sans-serif; font-size: 12px; line-height: 1.5; box-shadow: 0 8px 16px rgba(0,0,0,0.5);">
-            <div style="font-weight: 700; font-size: 13px; color: #00D2BA; margin-bottom: 4px;">{clinic_name}{hub_name}</div>
-            <div><b>Region:</b> {region}</div>
-            <div><b>Classification:</b> {remote_tier} ({risk_tier}){hub_status}</div>
-            <div><b>Assigned Hub / Status:</b> {nearest_hub}{dispatches_in_filter}</div>
-            <div><b>Standard OTIF:</b> <span style="color: #10B981; font-weight: 700;">{standard_otif_rate_pct}%</span></div>
-            <div><b>Quality OTIF:</b> {quality_otif_rate_pct}%</div>
-            <div><b>Avg Simulated Lead Time:</b> {avg_lead_time_hours} hrs</div>
-            <div><b>Orders Logged:</b> {total_orders} (Stockouts: {stock_outs})</div>
-            <div style="font-size: 10px; color: #9CA3AF; margin-top: 4px; border-top: 1px solid #374151; padding-top: 4px;">* Corridors represent illustrative logistical links.</div>
-        </div>
-        """,
+        "html": "{tooltip_html}",
         "style": {"backgroundColor": "transparent", "color": "white"}
     }
 
@@ -217,23 +246,18 @@ def build_plotly_geographic_scatter(
                     line=dict(width=1, color="#FFFFFF"),
                 ),
                 customdata=subset[["region", "remote_tier", "standard_otif_rate_pct", "avg_lead_time_hours", "total_orders", "stock_outs", "nearest_hub"]],
-                hovertemplate="""
-                <b>%{text}</b><br>
-                Region: %{customdata[0]}<br>
-                Tier: %{customdata[1]}<br>
-                Assigned Hub: %{customdata[6]}<br>
-                Standard OTIF: %{customdata[2]}%<br>
-                Avg Simulated Lead Time: %{customdata[3]} hrs<br>
-                Total Requests: %{customdata[4]} (Stockouts: %{customdata[5]})<br>
-                <extra></extra>
-                """
+                hovertemplate="""<b>%{text}</b><br>Region: %{customdata[0]}<br>Accessibility: %{customdata[1]}<br>Assigned Hub: %{customdata[6]}<br>Standard OTIF: %{customdata[2]}%<br>Avg Lead Time: %{customdata[3]} hrs<br>Total Requests: %{customdata[4]} (Stockouts: %{customdata[5]})<extra></extra>"""
             ))
 
-    # Add Hubs (Distinguishing active vs configured)
+    # Add Hubs (Distinguishing active vs configured, counting actual dispatches excluding stockouts)
     if df_hubs is not None and len(df_hubs) > 0:
         hub_counts = {}
         if df_filtered is not None and len(df_filtered) > 0 and "hub_id" in df_filtered.columns:
-            hub_counts = df_filtered["hub_id"].value_counts().to_dict()
+            if "dispatch_timestamp" in df_filtered.columns:
+                dispatched_filter = df_filtered[df_filtered["dispatch_timestamp"].notna()]
+            else:
+                dispatched_filter = df_filtered[df_filtered["order_status"] != "Stock-Out"]
+            hub_counts = dispatched_filter["hub_id"].value_counts().to_dict()
 
         df_hubs_copy = df_hubs.copy()
         df_hubs_copy["dispatches"] = df_hubs_copy["hub_id"].map(lambda h: hub_counts.get(h, 0))
@@ -256,7 +280,7 @@ def build_plotly_geographic_scatter(
                     line=dict(width=2, color="#FFFFFF")
                 ),
                 customdata=active_hubs[["region", "dispatches"]],
-                hovertemplate="<b>%{text}</b><br>Region: %{customdata[0]}<br>Active Dispatches: %{customdata[1]}<extra></extra>"
+                hovertemplate="<b>%{text} (Distribution Hub)</b><br>Region: %{customdata[0]}<br>Actual Dispatches: %{customdata[1]}<extra></extra>"
             ))
 
         if len(configured_hubs) > 0:
@@ -275,7 +299,7 @@ def build_plotly_geographic_scatter(
                     line=dict(width=2, color="#9CA3AF")
                 ),
                 customdata=configured_hubs[["region", "dispatches"]],
-                hovertemplate="<b>%{text}</b><br>Region: %{customdata[0]}<br>Status: Configured (0 dispatches in filter)<extra></extra>"
+                hovertemplate="<b>%{text} (Distribution Hub)</b><br>Region: %{customdata[0]}<br>Status: Configured (0 dispatches in filter)<extra></extra>"
             ))
 
     fig.update_layout(
