@@ -1,0 +1,33 @@
+clinic_id,clinic_name,region,latitude,longitude,remote_tier,population_served,nearest_hub
+CLN-EAS-001,Suhum Community Hospital,Eastern,6.0402,-0.4501,Tier 1,45000,HUB-OMN
+CLN-EAS-002,Begoro District Clinic,Eastern,6.3889,-0.3789,Tier 2,28000,HUB-OMN
+CLN-EAS-003,Donkorkrom Afram Plains Center,Eastern,6.9189,-0.0825,Tier 3,19500,HUB-OMN
+CLN-EAS-004,Asamankese Health Post,Eastern,5.8601,-0.6635,Tier 1,34000,HUB-OMN
+CLN-EAS-005,Kwahu Tafo Rural Outreach,Eastern,6.612,-0.612,Tier 2,14200,HUB-OMN
+CLN-EAS-006,Tease Island Aid Post,Eastern,6.84,-0.16,Tier 3,8900,HUB-OMN
+CLN-ASH-001,Mampong Municipal Hospital,Ashanti,7.0625,-1.4002,Tier 1,52000,HUB-MPN
+CLN-ASH-002,Ejura Agricultural Clinic,Ashanti,7.3856,-1.3654,Tier 2,31000,HUB-MPN
+CLN-ASH-003,Agogo Presbyterian Clinic,Ashanti,6.8012,-1.0824,Tier 1,38000,HUB-MPN
+CLN-ASH-004,Bosome Freho Forest Post,Ashanti,6.4215,-1.385,Tier 3,11500,HUB-MPN
+CLN-ASH-005,Drobonso Savanna Health Center,Ashanti,7.115,-1.025,Tier 3,12800,HUB-MPN
+CLN-ASH-006,Juaben Methodist Clinic,Ashanti,6.8167,-1.4333,Tier 1,29000,HUB-MPN
+CLN-NOR-001,Walewale District Hospital,Northern,10.3524,-0.7984,Tier 1,61000,HUB-KUK
+CLN-NOR-002,Nalerigu Baptist Medical Post,Northern,10.5312,-0.3705,Tier 2,27500,HUB-KUK
+CLN-NOR-003,Bunkpurugu Border Clinic,Northern,10.551,0.098,Tier 3,18200,HUB-KUK
+CLN-NOR-004,Chereponi Riverway Post,Northern,10.134,0.284,Tier 3,15400,HUB-KUK
+CLN-NOR-005,Savelugu Polyclinic,Northern,9.6247,-0.8258,Tier 1,48000,HUB-KUK
+CLN-NOR-006,Gushegu Rural Aid,Northern,9.9214,-0.2185,Tier 2,21000,HUB-KUK
+CLN-WES-001,Juaboso Goldfields Hospital,Western,6.3389,-2.8341,Tier 2,32000,HUB-SFW
+CLN-WES-002,Bia West Rainforest Clinic,Western,6.5512,-3.0541,Tier 3,14100,HUB-SFW
+CLN-WES-003,Bibiani Municipal Health Center,Western,6.4635,-2.3194,Tier 1,41000,HUB-SFW
+CLN-WES-004,Enchi Remote Clinic,Western,5.8214,-2.825,Tier 3,17800,HUB-SFW
+CLN-WES-005,Asankragwa Community Post,Western,5.8021,-2.4352,Tier 2,24500,HUB-SFW
+CLN-VOL-001,Ho Municipal Hospital,Volta,6.611,0.471,Tier 1,55000,HUB-OMN
+CLN-VOL-002,Kpandu Mountain Clinic,Volta,6.995,0.293,Tier 2,29000,HUB-OMN
+CLN-VOL-003,Nkwanta Northern Ridge Post,Volta,8.257,0.521,Tier 3,16400,HUB-OMN
+CLN-VOL-004,Dambai Lake Ferry Aid Center,Volta,8.0667,0.1833,Tier 3,13900,HUB-OMN
+CLN-VOL-005,Sogakope Riverside Clinic,Volta,5.999,0.598,Tier 1,31200,HUB-OMN
+CLN-GAC-001,Amabor Rural Health Center,Greater Accra,5.782,-0.345,Tier 1,42000,HUB-OMN
+CLN-GAC-002,Dodowa Forest Perimeter Post,Greater Accra,5.882,-0.098,Tier 2,26000,HUB-OMN
+CLN-GAC-003,Ada Foah Estuary Clinic,Greater Accra,5.791,0.632,Tier 3,18500,HUB-OMN
+CLN-GAC-004,Prampram Coastal Aid Post,Greater Accra,5.714,0.124,Tier 1,35000,HUB-OMN

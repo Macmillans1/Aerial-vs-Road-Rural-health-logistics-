@@ -1,0 +1,6 @@
+hub_id,hub_name,region,latitude,longitude,drone_fleet_size,vehicle_fleet_size,serviced_radius_km
+HUB-OMN,Omenako Distribution Center,Eastern,6.0385,-0.4578,28,12,120
+HUB-MPN,Mpanya Medical Nest,Ashanti,6.8924,-1.4125,32,14,130
+HUB-KUK,Kukua Fulfillment Hub,Northern,10.3541,-0.8123,24,8,150
+HUB-SFW,Sefwi Wiawso Depot,Western,6.2081,-2.4839,20,10,110
+HUB-ANK,Ankaful Coastal Center,Central,5.1472,-1.2986,18,12,100

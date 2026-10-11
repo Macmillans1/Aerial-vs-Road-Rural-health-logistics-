@@ -1,0 +1,15 @@
+product_id,product_name,category,storage_requirement,urgency_level,unit_cost_usd,shelf_life_days,target_delivery_hours
+PRD-AVM-001,Polyvalent Snake Antivenom,Antivenom,Ambient,Emergency,120.0,730,1.0
+PRD-AVM-002,Echis Ocellatus Monovalent Antivenom,Antivenom,Ambient,Emergency,145.0,730,1.0
+PRD-VAC-001,Rabies Post-Exposure Vaccine,Vaccine,Cold Chain,Emergency,48.0,365,1.5
+PRD-VAC-002,Yellow Fever Routine Vaccine (10-dose),Vaccine,Cold Chain,Routine,18.0,180,8.0
+PRD-VAC-003,Pentavalent DTP-HepB-Hib Vaccine,Vaccine,Cold Chain,Routine,22.5,180,8.0
+PRD-VAC-004,Oral Polio Vaccine (OPV),Vaccine,Cold Chain,Routine,12.0,90,6.0
+PRD-BLD-001,Whole Blood O-Negative (Emergency Reserve),Blood Products,Cold Chain,Emergency,85.0,35,0.75
+PRD-BLD-002,Packed Red Blood Cells (PRBC Type A+),Blood Products,Cold Chain,Emergency,90.0,42,1.0
+PRD-BLD-003,Fresh Frozen Plasma (FFP),Blood Products,Cold Chain,Priority,110.0,365,2.0
+PRD-MED-001,Oxytocin Injectable (Postpartum Hemorrhage),Essential Meds,Cold Chain,Emergency,8.5,180,1.0
+PRD-MED-002,Artesunate IV (Severe Malaria),Essential Meds,Ambient,Emergency,15.0,730,1.5
+PRD-MED-003,Amoxicillin Pediatric Suspension (Bulk),Essential Meds,Ambient,Routine,4.5,540,12.0
+PRD-MED-004,Magnesium Sulfate 50% (Eclampsia Protocol),Essential Meds,Ambient,Priority,11.0,730,2.5
+PRD-MED-005,Insulin Glargine Pen Cartridges,Essential Meds,Cold Chain,Priority,35.0,180,4.0
