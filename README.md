@@ -1,3 +1,5 @@
+
+
 # 🚁 Rural Healthcare Supply Chain & Drone Logistics Analytics (Ghana)
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
@@ -132,6 +134,33 @@ The headline metrics generated directly via the reproducible script [`scripts/ge
 4. Differences between percentage rates are expressed in **percentage points (pp)**. Differences in lead times represent differences in average simulated lead times across transport modes.
 5. Both modalities are evaluated against identical product SLA deadlines.
 
+### 6. What-If Scenario Simulator Methodology & Operational Scope
+
+The dashboard integrates an interactive **What-If Scenario Simulator** ([`src/scenario_engine.py`](file:///d:/Rural%20Logistics/src/scenario_engine.py)) allowing logistics planners to evaluate the sensitivity of delivery deadlines to pre-flight drone preparations, ground vehicle staging delays, and seasonal severe weather transit friction.
+
+#### Mathematical Adjustments:
+1. **Preparation Time Adjustment**:
+   $$T_{\text{new\_prep}} = \max\left(0, T_{\text{base\_prep}} + \Delta_{\text{mode}}\right)$$
+   $$\Delta T_{\text{prep}} = T_{\text{new\_prep}} - T_{\text{base\_prep}}$$
+   - **Drone Preparation**: $-30$ to $+120$ minutes (default $0$). Simulates automated launch nest battery swaps vs. manual pre-flight avionics checks.
+   - **Road Preparation**: $-60$ to $+240$ minutes (default $0$). Simulates expedited warehouse staging vs. mechanical loading delays.
+   - *Zero-Floor Invariant*: Preparation reductions never result in negative preparation durations.
+2. **Severe Weather Delay**:
+   - Added once to transit duration for shipments matching both the selected weather condition (`Heavy Rain`, `Severe Storm/Flood`) and transport mode (`Drone`, `Road`, or both):
+   $$T_{\text{scenario}} = T_{\text{lead\_base}} + \Delta T_{\text{prep}} + \Delta T_{\text{weather}}$$
+3. **Fulfillment Status Recomputation**:
+   - On-time status evaluates strictly against unchanged product deadlines: $\text{Scenario On-Time} \iff T_{\text{scenario}} \le T_{\text{target\_sla}}$. Exact-deadline deliveries count as on time.
+   - Standard OTIF: $\text{Scenario On-Time} \land \text{In-Full}$.
+   - Quality OTIF (OTIF-Q): $\text{Scenario Standard OTIF} \land \text{QualityPass}$.
+
+#### Stated Denominators:
+- **Average Lead Time, 90th-Percentile Lead Time, and On-Time Delivery Rate**: Evaluated strictly over delivered shipments ($N_{\text{delivered}}$).
+- **Standard OTIF Rate and Quality-Adjusted OTIF (OTIF-Q)**: Evaluated over all selected requisitions ($N_{\text{total}}$). Differences between rates are reported in **percentage points (pp)**.
+
+#### Boundary Assumptions & Simulator Limitations:
+- **Timing Only**: Quality observations (cold-chain breach audit status) and inventory availability (stock-out outcomes) are held constant.
+- **Out of Scope**: Fleet capacity constraints (discrete vehicle counts), queuing at launch nests, payload weight feasibility, mode switching, and dynamic cold-chain breach generation or recovery are outside this simulator's scope.
+
 ---
 
 ## 5. Repository Structure
@@ -151,10 +180,12 @@ d:/Rural Logistics/
 │   ├── __init__.py
 │   ├── data_generator.py         # Synthetic generation pipeline with uniform SLA deadlines
 │   ├── metrics_engine.py         # Star-schema joins, OTIF recomputation, runtime schema validation
-│   └── map_visualizer.py         # PyDeck 3D illustrative corridors & Plotly scatter mapping
+│   ├── map_visualizer.py         # PyDeck 3D illustrative corridors & Plotly scatter mapping
+│   └── scenario_engine.py        # What-If simulator engine with deterministic sensitivity modeling
 ├── tests/
-│   └── test_logistics.py         # Comprehensive validation & regression test suite (21 tests)
-├── app.py                        # Streamlit dashboard entry point
+│   ├── test_logistics.py         # Data validation, schema integrity & ledger tests
+│   └── test_scenario_simulator.py # Comprehensive scenario simulator test suite
+├── app.py                        # Streamlit dashboard entry point with What-If simulator tab
 ├── requirements.txt              # Dependency specifications
 └── README.md                     # Technical architecture documentation
 ```

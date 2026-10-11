@@ -4,6 +4,7 @@ Ghana Medical Drone & Ground Fleet Logistics Network (Zipline & GHS Operational 
 Comprehensive operational telemetry and multi-modal logistics performance analytics.
 """
 
+import json
 from datetime import datetime
 from typing import Optional
 import numpy as np
@@ -19,6 +20,7 @@ from src.metrics_engine import (
     filter_shipment_ledger,
 )
 from src.map_visualizer import build_pydeck_logistics_map, build_plotly_geographic_scatter
+from src.scenario_engine import ScenarioParameters, simulate_scenario
 
 # -----------------------------------------------------------------------------
 # 1. Page Configuration & Custom CSS Injection
@@ -448,7 +450,7 @@ with map_col2:
     <span><b>High Risk</b> (&lt; 65% OTIF or &gt; 8% Stockout)</span>
 </div>"""
         legend_explainer = """<b>Threshold Rationale:</b><br>
-• <b>&ge; 80%</b>: Meets emergency target reliability benchmarks.<br>
+• <b>&ge; 80%</b>: Meets the selected demonstration threshold.<br>
 • <b>65–80%</b>: Elevated delay volatility requiring buffer stock.<br>
 • <b>&lt; 65% / &gt; 8% stockout</b>: Critical service gaps risking treatment access."""
     else:
@@ -525,10 +527,11 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-chart_tab1, chart_tab2, chart_tab3 = st.tabs([
+chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
     "🚀 Transport Efficiency (Drone vs. Road)",
     "📈 Weekly OTIF & Fulfillment Trends",
     "⚠️ Regional Bottlenecks & Stock-Out Diagnostics",
+    "🔮 What-If Scenario Simulator",
 ])
 
 # TAB 1: MODAL TRANSPORT EFFICIENCY
@@ -754,6 +757,329 @@ with chart_tab3:
         else:
             st.info("No regional bottlenecks to compute.")
 
+# TAB 4: WHAT-IF SCENARIO SIMULATOR
+with chart_tab4:
+    st.markdown("""
+        <div style="font-size: 1.15rem; font-weight: 700; color: #F3F4F6; margin-bottom: 4px;">
+            🔮 Multi-Modal What-If Operational Scenario Simulator
+        </div>
+        <div style="font-size: 0.85rem; color: #9CA3AF; margin-bottom: 12px;">
+            Evaluate how pre-flight drone preparation adjustments, ground fleet dispatch delays, and seasonal severe weather affect SLA attainment.
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Disclaimer and labeling notice
+    st.markdown("""
+        <div style="background: rgba(30, 58, 138, 0.25); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 10px 14px; color: #93C5FD; font-size: 0.82rem; margin-bottom: 16px; line-height: 1.5;">
+            <b>Operational Context & Definitions:</b><br>
+            • <b>Baseline:</b> Existing simulated records in active sidebar filter selection.<br>
+            • <b>Scenario:</b> Results after the selected timing adjustments.<br>
+            • <i>Notice:</i> Scenario estimates reflect user-defined assumptions, not predictions of actual operational performance.<br>
+            • <i>Scope:</i> Changes timing only. Quality outcomes (cold-chain breach observations) and inventory availability are held constant.
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Filter change tracking & invalidation
+    current_filter_sig = (
+        tuple(sorted(selected_regions)) if selected_regions else (),
+        str(start_filter_date),
+        str(end_filter_date),
+        tuple(sorted(selected_categories)) if selected_categories else (),
+        tuple(sorted(selected_modes)) if selected_modes else (),
+        tuple(sorted(selected_tiers)) if selected_tiers else (),
+    )
+
+    if st.session_state.get("scenario_applied", False):
+        if st.session_state.get("scenario_filter_sig") != current_filter_sig:
+            st.warning("⚠️ Active sidebar filters have changed since the scenario was applied. Re-apply the scenario to calculate results for the current cohort.")
+            st.session_state["scenario_applied"] = False
+
+    # Control form
+    with st.form(key="what_if_scenario_form"):
+        scen_ctrl_col1, scen_ctrl_col2 = st.columns(2)
+
+        with scen_ctrl_col1:
+            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #00D2BA; margin-bottom: 8px;'>⏱️ Dispatch Preparation Adjustments</div>", unsafe_allow_html=True)
+            drone_prep_adj = st.slider(
+                "Drone Preparation-Time Adjustment (mins)",
+                min_value=-30,
+                max_value=120,
+                value=int(st.session_state.get("scen_drone_prep_adj", 0)),
+                step=5,
+                help="Adjustment to drone pre-flight preparation and staging duration (-30 to +120 minutes; default 0).",
+            )
+            road_prep_adj = st.slider(
+                "Road Preparation-Time Adjustment (mins)",
+                min_value=-60,
+                max_value=240,
+                value=int(st.session_state.get("scen_road_prep_adj", 0)),
+                step=5,
+                help="Adjustment to ground fleet loading, mechanical inspection, and driver staging (-60 to +240 minutes; default 0).",
+            )
+
+        with scen_ctrl_col2:
+            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #F59E0B; margin-bottom: 8px;'>🌧️ Severe Weather Transit Delay</div>", unsafe_allow_html=True)
+            weather_delay = st.slider(
+                "Additional Weather Transit Delay (mins)",
+                min_value=0,
+                max_value=180,
+                value=int(st.session_state.get("scen_weather_delay", 0)),
+                step=5,
+                help="Additional transit delay added once to eligible shipments under selected weather and transport modes (0 to 180 minutes; default 0).",
+            )
+            available_weather_conditions = sorted(engine.df_master["weather_condition"].dropna().unique().tolist())
+            weather_categories_selected = st.multiselect(
+                "Weather Categories Subject to Additional Delay",
+                options=available_weather_conditions,
+                default=st.session_state.get("scen_weather_categories", [c for c in ["Heavy Rain", "Severe Storm/Flood"] if c in available_weather_conditions]),
+                help="Select weather classifications that incur the additional transit delay (default Heavy Rain and Severe Storm/Flood).",
+            )
+            weather_modes_selected = st.multiselect(
+                "Transport Modes Subject to Weather Delay",
+                options=["Drone", "Road"],
+                default=st.session_state.get("scen_weather_modes", ["Drone", "Road"]),
+                help="Select transport modes affected by the weather delay (Drone, Road, or both; default both).",
+            )
+
+        form_btn_col1, form_btn_col2 = st.columns([1, 1])
+        with form_btn_col1:
+            apply_submitted = st.form_submit_button("⚡ Apply Scenario", type="primary", use_container_width=True)
+
+    # Reset button (outside form to allow resetting state cleanly)
+    reset_col1, reset_col2 = st.columns([1, 3])
+    with reset_col1:
+        if st.button("🔄 Reset Scenario", use_container_width=True, help="Restores default controls (0 timing adjustments) and clears the applied scenario."):
+            st.session_state["scenario_applied"] = False
+            st.session_state["scen_drone_prep_adj"] = 0
+            st.session_state["scen_road_prep_adj"] = 0
+            st.session_state["scen_weather_delay"] = 0
+            st.session_state["scen_weather_categories"] = [c for c in ["Heavy Rain", "Severe Storm/Flood"] if c in available_weather_conditions]
+            st.session_state["scen_weather_modes"] = ["Drone", "Road"]
+            st.rerun()
+
+    if apply_submitted:
+        st.session_state["scenario_applied"] = True
+        st.session_state["scenario_filter_sig"] = current_filter_sig
+        st.session_state["scen_drone_prep_adj"] = drone_prep_adj
+        st.session_state["scen_road_prep_adj"] = road_prep_adj
+        st.session_state["scen_weather_delay"] = weather_delay
+        st.session_state["scen_weather_categories"] = weather_categories_selected
+        st.session_state["scen_weather_modes"] = weather_modes_selected
+        st.rerun()
+
+    # Scenario Results Presentation
+    if st.session_state.get("scenario_applied", False):
+        scenario_params = ScenarioParameters(
+            drone_prep_adj_minutes=float(st.session_state.get("scen_drone_prep_adj", 0)),
+            road_prep_adj_minutes=float(st.session_state.get("scen_road_prep_adj", 0)),
+            weather_delay_minutes=float(st.session_state.get("scen_weather_delay", 0)),
+            weather_categories=tuple(st.session_state.get("scen_weather_categories", ["Heavy Rain", "Severe Storm/Flood"])),
+            weather_modes=tuple(st.session_state.get("scen_weather_modes", ["Drone", "Road"])),
+        )
+
+        scenario_res = simulate_scenario(df_filtered, scenario_params)
+        scen_df = scenario_res.df
+        scen_summary = scenario_res.summary
+
+        if len(df_filtered) == 0:
+            st.warning("⚠️ No shipment records match the active filter criteria. Broaden your filters to view scenario simulation.")
+        elif scen_summary.delivered_requests == 0:
+            st.info("ℹ️ The active selection contains stock-out requests only. No shipments were delivered, so lead times and on-time delivery rates are N/A.")
+        else:
+            # 1. Headline Comparisons Table
+            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 10px 0;'>📊 Performance Comparison: Baseline vs. Scenario</div>", unsafe_allow_html=True)
+
+            comparison_rows = []
+            for m in scen_summary.metric_rows:
+                base_val = f"{m.baseline_value:.2f} {m.unit}" if m.baseline_value is not None else "N/A"
+                scen_val = f"{m.scenario_value:.2f} {m.unit}" if m.scenario_value is not None else "N/A"
+                if m.change_value is not None:
+                    if m.is_percentage_point:
+                        chg_val = f"{m.change_value:+.2f} pp"
+                    else:
+                        chg_val = f"{m.change_value:+.2f} {m.unit}"
+                else:
+                    chg_val = "N/A"
+
+                comparison_rows.append({
+                    "Operational Metric": m.metric_name,
+                    "Baseline": base_val,
+                    "Scenario": scen_val,
+                    "Change": chg_val,
+                    "Denominator Basis": m.denominator_explanation,
+                })
+
+            st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
+
+            # 2. Charts: Lead Time by Mode & Regional OTIF Comparison
+            ch_col1, ch_col2 = st.columns(2)
+
+            with ch_col1:
+                if len(scen_summary.mode_comparison) > 0:
+                    mode_chart_data = []
+                    for _, row in scen_summary.mode_comparison.iterrows():
+                        mode_chart_data.append({
+                            "Transport Mode": row["transport_mode"],
+                            "Evaluation": "Baseline",
+                            "Avg Lead Time (Hours)": row["baseline_avg_lead_time_hours"]
+                        })
+                        mode_chart_data.append({
+                            "Transport Mode": row["transport_mode"],
+                            "Evaluation": "Scenario",
+                            "Avg Lead Time (Hours)": row["scenario_avg_lead_time_hours"]
+                        })
+                    fig_mode_lt = px.bar(
+                        pd.DataFrame(mode_chart_data),
+                        x="Transport Mode",
+                        y="Avg Lead Time (Hours)",
+                        color="Evaluation",
+                        barmode="group",
+                        title="Average Lead Time by Modality: Baseline vs. Scenario",
+                        color_discrete_map={"Baseline": "#6B7280", "Scenario": "#00D2BA"},
+                        text_auto=".2f",
+                    )
+                    fig_mode_lt.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#E5E7EB"),
+                        margin=dict(t=50, b=40, l=40, r=20),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        xaxis=dict(showgrid=False),
+                        yaxis=dict(gridcolor="#1F2937"),
+                    )
+                    st.plotly_chart(fig_mode_lt, use_container_width=True)
+                else:
+                    st.info("No modal comparisons available.")
+
+            with ch_col2:
+                if len(scen_summary.regional_comparison) > 0:
+                    reg_chart_data = []
+                    for _, row in scen_summary.regional_comparison.iterrows():
+                        reg_chart_data.append({
+                            "Region": row["region"],
+                            "Evaluation": "Baseline",
+                            "Standard OTIF (%)": row["baseline_standard_otif_pct"]
+                        })
+                        reg_chart_data.append({
+                            "Region": row["region"],
+                            "Evaluation": "Scenario",
+                            "Standard OTIF (%)": row["scenario_standard_otif_pct"]
+                        })
+                    fig_reg_otif = px.bar(
+                        pd.DataFrame(reg_chart_data),
+                        x="Region",
+                        y="Standard OTIF (%)",
+                        color="Evaluation",
+                        barmode="group",
+                        title="Regional Standard OTIF Rate: Baseline vs. Scenario",
+                        color_discrete_map={"Baseline": "#6B7280", "Scenario": "#3B82F6"},
+                        text_auto=".1f",
+                    )
+                    fig_reg_otif.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#E5E7EB"),
+                        margin=dict(t=50, b=40, l=40, r=20),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        xaxis=dict(showgrid=False),
+                        yaxis=dict(gridcolor="#1F2937"),
+                    )
+                    st.plotly_chart(fig_reg_otif, use_container_width=True)
+                else:
+                    st.info("No regional comparisons available.")
+
+            # 3. Table of Requests whose on-time status changed
+            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 8px 0;'>⚠️ Requisitions with Changed On-Time Delivery Status</div>", unsafe_allow_html=True)
+            changed_records = scen_df[scen_df["on_time_status_changed"]].copy()
+
+            if len(changed_records) > 0:
+                st.caption(f"Showing {len(changed_records):,} requisitions whose on-time status flipped between baseline and scenario.")
+                changed_display_cols = [
+                    "request_id",
+                    "clinic_name",
+                    "transport_mode",
+                    "target_delivery_hours",
+                    "lead_time_hours",
+                    "scenario_lead_time_hours",
+                    "is_on_time",
+                    "scenario_is_on_time",
+                ]
+                changed_view = changed_records[changed_display_cols].copy()
+                changed_view["target_delivery_hours"] = changed_view["target_delivery_hours"].round(2)
+                changed_view["lead_time_hours"] = changed_view["lead_time_hours"].round(2)
+                changed_view["scenario_lead_time_hours"] = changed_view["scenario_lead_time_hours"].round(2)
+
+                st.dataframe(
+                    changed_view,
+                    use_container_width=True,
+                    height=280,
+                    column_config={
+                        "request_id": st.column_config.TextColumn("Request ID"),
+                        "clinic_name": st.column_config.TextColumn("Destination Health Post"),
+                        "transport_mode": st.column_config.TextColumn("Modality"),
+                        "target_delivery_hours": st.column_config.NumberColumn("Target SLA", format="%.2f hrs"),
+                        "lead_time_hours": st.column_config.NumberColumn("Baseline Lead Time", format="%.2f hrs"),
+                        "scenario_lead_time_hours": st.column_config.NumberColumn("Scenario Lead Time", format="%.2f hrs"),
+                        "is_on_time": st.column_config.CheckboxColumn("Baseline On-Time"),
+                        "scenario_is_on_time": st.column_config.CheckboxColumn("Scenario On-Time"),
+                    }
+                )
+            else:
+                st.info("ℹ️ No requisitions changed on-time delivery status under this scenario (timing adjustments did not cause or resolve any delivery SLA breaches).")
+
+            # 4. Downloads: CSV and JSON Exports
+            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 8px 0;'>📥 Export Scenario Telemetry & Analytics</div>", unsafe_allow_html=True)
+            dl_col1, dl_col2 = st.columns(2)
+
+            with dl_col1:
+                export_cols = [
+                    "request_id", "clinic_name", "region", "remote_tier", "product_name", "category",
+                    "transport_mode", "target_delivery_hours", "lead_time_hours", "scenario_lead_time_hours",
+                    "scenario_prep_change_minutes", "scenario_weather_delay_minutes", "is_on_time",
+                    "scenario_is_on_time", "is_delayed", "scenario_is_delayed", "is_standard_otif",
+                    "scenario_is_standard_otif", "is_quality_otif", "scenario_is_quality_otif",
+                    "order_status", "scenario_order_status_display",
+                ]
+                avail_export_cols = [c for c in export_cols if c in scen_df.columns]
+                csv_bytes = scen_df[avail_export_cols].to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Request-Level Scenario CSV",
+                    data=csv_bytes,
+                    file_name=f"what_if_scenario_shipments_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+
+            with dl_col2:
+                json_payload = {
+                    "generated_at": datetime.now().isoformat(),
+                    "scenario_parameters": {
+                        "drone_prep_adj_minutes": scenario_params.drone_prep_adj_minutes,
+                        "road_prep_adj_minutes": scenario_params.road_prep_adj_minutes,
+                        "weather_delay_minutes": scenario_params.weather_delay_minutes,
+                        "weather_categories": list(scenario_params.weather_categories),
+                        "weather_modes": list(scenario_params.weather_modes),
+                    },
+                    "active_filters": {
+                        "regions": selected_regions,
+                        "date_range": [str(start_filter_date), str(end_filter_date)],
+                        "product_categories": selected_categories,
+                        "transport_modes": selected_modes,
+                        "remote_tiers": selected_tiers,
+                    },
+                    "summary_metrics": scen_summary.to_dict(),
+                }
+                json_bytes = json.dumps(json_payload, indent=2).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Scenario Summary JSON",
+                    data=json_bytes,
+                    file_name=f"what_if_scenario_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
+    else:
+        st.info("💡 Adjust the scenario parameters above and click **⚡ Apply Scenario** to calculate comparative operational metrics.")
+
 
 # -----------------------------------------------------------------------------
 # 8. Deep-Dive Transactional Data Grid & Record Inspection
@@ -868,4 +1194,20 @@ with st.expander("📐 Technical Architecture, Star Schema & Methodological Note
 
     #### 5. Fleet Model Scope Notice
     *Fleet capacity constraints (discrete vehicle counts), maximum payload weight limits, and service-radius eligibility criteria are recorded in dimension schemas but are not yet enforced in dispatch allocation logic.*
+
+    #### 6. What-If Scenario Simulator Methodology & Scope
+    - **Preparation Time Adjustment**:
+      $$T_{\\text{new\\_prep}} = \\max\\left(0, T_{\\text{base\\_prep}} + \\Delta_{\\text{mode}}\\right)$$
+      $$\\Delta T_{\\text{prep}} = T_{\\text{new\\_prep}} - T_{\\text{base\\_prep}}$$
+      Mode-specific adjustments apply to drone ($-30$ to $+120$ min) and road ($-60$ to $+240$ min) staging. Preparation reductions are strictly floored at 0 minutes.
+    - **Severe Weather Delay**: Applied once per delivered requisition when both weather category and transport mode match active scenario controls ($\\Delta T_{\\text{weather}}$).
+    - **Scenario Lead Time**:
+      $$T_{\\text{scenario}} = T_{\\text{lead\\_base}} + \\Delta T_{\\text{prep}} + \\Delta T_{\\text{weather}}$$
+    - **Stated Denominators**:
+      - Average Lead Time, 90th-percentile Lead Time, and On-Time Delivery Rate are evaluated strictly over **delivered requests** ($N_{\\text{delivered}}$).
+      - Standard OTIF Rate and Quality-Adjusted OTIF (OTIF-Q) are evaluated over **all selected requests** ($N_{\\text{total}}$).
+    - **Simulation Scope & Boundary Assumptions**:
+      - This simulation changes timing only.
+      - Cold-chain quality audit outcomes and hub inventory availability are held constant.
+      - Fleet capacity constraints (discrete vehicle counts), queuing at hubs, payload weight feasibility, mode switching, and dynamic cold-chain breach generation/resolution are outside this simulator's scope.
     """)
