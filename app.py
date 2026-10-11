@@ -1,10 +1,11 @@
 """Rural Healthcare Supply Chain & Logistics Analytics Dashboard.
 
-Ghana Medical Drone & Ground Fleet Logistics Network (Zipline & GHS Model).
-A Master's in Data Science / Data Analytics Flagship Portfolio Project.
+Ghana Medical Drone & Ground Fleet Logistics Network (Zipline & GHS Operational Model).
+Comprehensive operational telemetry and multi-modal logistics performance analytics.
 """
 
 from datetime import datetime
+from typing import Optional
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -18,7 +19,7 @@ from src.map_visualizer import build_pydeck_logistics_map, build_plotly_geograph
 # 1. Page Configuration & Custom CSS Injection
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Ghana Rural Healthcare Logistics Dashboard",
+    page_title="Ghana Rural Healthcare Logistics Telemetry",
     page_icon="🚁",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -27,26 +28,36 @@ st.set_page_config(
 # Premium Dark Glassmorphism CSS styling
 st.markdown("""
 <style>
-    /* Google Fonts Import */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
 
-    /* Background and main container adjustments */
     .stApp {
         background: radial-gradient(circle at 15% 15%, #101826 0%, #0B0F19 100%);
     }
 
-    /* Metric Card Styling */
+    .synthetic-banner {
+        background: rgba(30, 58, 138, 0.25);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        border-radius: 8px;
+        padding: 8px 14px;
+        color: #93C5FD;
+        font-size: 0.82rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
     .metric-card {
         background: rgba(22, 31, 48, 0.75);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 14px;
-        padding: 20px 22px;
+        padding: 18px 20px;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
         transition: transform 0.2s ease, border-color 0.2s ease;
         position: relative;
@@ -68,23 +79,26 @@ st.markdown("""
     .metric-card.gold::before {
         background: linear-gradient(90deg, #F59E0B, #10B981);
     }
+    .metric-card.purple::before {
+        background: linear-gradient(90deg, #8B5CF6, #EC4899);
+    }
 
     .metric-title {
-        font-size: 0.82rem;
+        font-size: 0.78rem;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.05em;
         color: #9CA3AF;
         margin-bottom: 6px;
     }
     .metric-value {
-        font-size: 2.1rem;
+        font-size: 1.95rem;
         font-weight: 800;
         color: #FFFFFF;
         line-height: 1.1;
     }
     .metric-sub {
-        font-size: 0.78rem;
+        font-size: 0.76rem;
         color: #6EE7B7;
         margin-top: 6px;
         display: flex;
@@ -98,12 +112,11 @@ st.markdown("""
         color: #D1D5DB;
     }
 
-    /* Section Headers */
     .section-header {
-        font-size: 1.25rem;
+        font-size: 1.22rem;
         font-weight: 700;
         color: #F3F4F6;
-        margin: 28px 0 14px 0;
+        margin: 26px 0 14px 0;
         display: flex;
         align-items: center;
         gap: 10px;
@@ -120,28 +133,9 @@ st.markdown("""
         border: 1px solid rgba(0, 210, 186, 0.3);
     }
 
-    /* Sidebar adjustments */
     [data-testid="stSidebar"] {
         background-color: #0e1422;
         border-right: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    /* Badges */
-    .badge-drone {
-        background-color: rgba(0, 210, 186, 0.18);
-        color: #00D2BA;
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 0.8rem;
-    }
-    .badge-road {
-        background-color: rgba(245, 158, 11, 0.18);
-        color: #F59E0B;
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 0.8rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -186,7 +180,7 @@ with st.sidebar:
         help="Filter shipments delivered to health posts across administrative regions in Ghana."
     )
 
-    # Date Range Slider
+    # Date Range Input
     min_date = engine.df_master["requested_timestamp"].min().date()
     max_date = engine.df_master["requested_timestamp"].max().date()
     date_selection = st.date_input(
@@ -194,7 +188,7 @@ with st.sidebar:
         value=(min_date, max_date),
         min_value=min_date,
         max_value=max_date,
-        help="Select the transactional window (1 full year available)."
+        help="Select the evaluation window (1 full calendar year)."
     )
 
     # Product Category Filter
@@ -226,15 +220,19 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 🗺️ Map Display Preferences")
-    map_engine_choice = st.radio("Map Rendering Engine", ["PyDeck 3D (Flight Arcs)", "Plotly 2D Scatter"], index=0)
-    map_color_choice = st.selectbox("Color Clinics By", ["risk_tier", "remote_tier"], format_func=lambda x: "Delivery Delay Risk Tier" if x == "risk_tier" else "Remote Accessibility Tier")
-    show_flight_corridors = st.checkbox("Show Aerial Corridors (Hub to Clinic)", value=True)
+    map_engine_choice = st.radio("Map Rendering Engine", ["PyDeck 3D (Illustrative Corridors)", "Plotly 2D Scatter"], index=0)
+    map_color_choice = st.selectbox(
+        "Color Clinics By",
+        ["risk_tier", "remote_tier"],
+        format_func=lambda x: "Delivery Delay Risk Tier" if x == "risk_tier" else "Remote Accessibility Tier"
+    )
+    show_supply_corridors = st.checkbox("Show Illustrative Supply Corridors (Hub to Clinic)", value=True)
 
     st.markdown("---")
     st.markdown("""
         <div style="font-size: 0.72rem; color: #6B7280; line-height: 1.4;">
-            <b>Portfolio Project Context:</b><br>
-            Designed for Master's in Data Science / Analytics admissions in Germany (TUM / LMU / RWTH).<br>
+            <b>Operational Context:</b><br>
+            Multi-modal supply chain modeling comparing autonomous aerial delivery vs. ground fleet logistics.<br>
             <i>Architecture: Star Schema | Python 3.10+ | Streamlit | Plotly | PyDeck</i>
         </div>
     """, unsafe_allow_html=True)
@@ -243,11 +241,19 @@ with st.sidebar:
 # -----------------------------------------------------------------------------
 # 4. Filter Execution & Data Subsetting
 # -----------------------------------------------------------------------------
-if isinstance(date_selection, tuple) and len(date_selection) == 2:
-    start_filter_date, end_filter_date = date_selection
+# Safe handling of incomplete date selection (e.g. single date while user is picking range)
+if isinstance(date_selection, (tuple, list)):
+    if len(date_selection) == 2:
+        start_filter_date, end_filter_date = date_selection[0], date_selection[1]
+    elif len(date_selection) == 1:
+        start_filter_date = date_selection[0]
+        end_filter_date = date_selection[0]
+    else:
+        start_filter_date, end_filter_date = min_date, max_date
 else:
     start_filter_date, end_filter_date = min_date, max_date
 
+# Pass filter lists directly so deselecting everything ([] vs None) yields empty results accurately
 df_filtered = engine.filter_data(
     regions=selected_regions,
     date_range=(start_filter_date, end_filter_date),
@@ -259,75 +265,117 @@ df_filtered = engine.filter_data(
 kpis = engine.compute_executive_kpis(df_filtered)
 df_clinic_metrics = engine.get_clinic_performance_summary(df_filtered)
 
+# Accurate dynamic network counts from filtered data
+active_hubs_count = df_filtered["hub_id"].nunique() if len(df_filtered) > 0 else 0
+active_clinics_count = df_filtered["clinic_id"].nunique() if len(df_filtered) > 0 else 0
+active_products_count = df_filtered["product_id"].nunique() if len(df_filtered) > 0 else 0
+
 
 # -----------------------------------------------------------------------------
 # 5. Header & Executive KPI Scorecard
 # -----------------------------------------------------------------------------
 st.markdown("""
+    <div class="synthetic-banner">
+        <span>ℹ️</span>
+        <span><b>Synthetic Data Notice:</b> All shipment telemetry, GPS coordinates, lead times, and operational records in this dashboard are generated synthetically for supply chain analytics and simulation modeling.</span>
+    </div>
+""", unsafe_allow_html=True)
+
+st.markdown(f"""
     <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
         <div>
-            <h1 style="margin: 0; font-size: 2.1rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em;">
+            <h1 style="margin: 0; font-size: 2.05rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em;">
                 Rural Healthcare Supply Chain & Drone Logistics Analytics
             </h1>
-            <p style="margin: 4px 0 0 0; color: #9CA3AF; font-size: 0.95rem;">
-                Operational Telemetry & Performance Dashboard • Autonomous Drone Fleet vs. Rural Ground Fleet • Republic of Ghana
+            <p style="margin: 4px 0 0 0; color: #9CA3AF; font-size: 0.92rem;">
+                Operational Telemetry Dashboard • Autonomous Drone Fleet vs. Rural Ground Fleet • Republic of Ghana
             </p>
         </div>
         <div style="text-align: right; background: rgba(0, 210, 186, 0.08); padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(0, 210, 186, 0.25);">
-            <div style="font-size: 0.72rem; color: #9CA3AF; font-weight: 600; text-transform: uppercase;">Active Subnetwork</div>
-            <div style="font-size: 0.95rem; font-weight: 700; color: #00D2BA;">5 Hubs • 32 Clinics • 14 Formulations</div>
+            <div style="font-size: 0.70rem; color: #9CA3AF; font-weight: 600; text-transform: uppercase;">Active Filtered Subnetwork</div>
+            <div style="font-size: 0.95rem; font-weight: 700; color: #00D2BA;">{active_hubs_count} Hubs • {active_clinics_count} Clinics • {active_products_count} Products</div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# Executive KPI Cards (Row of 5 metrics)
-col1, col2, col3, col4, col5 = st.columns(5)
+if len(df_filtered) == 0:
+    st.warning("⚠️ No shipment records match the selected filter criteria. Please broaden your selection in the sidebar.")
+
+# Helper formatting function
+def fmt_pct(val: Optional[float]) -> str:
+    return f"{val:.1f}%" if val is not None else "N/A"
+
+def fmt_hours(val: Optional[float]) -> str:
+    return f"{val:.1f} hrs" if val is not None else "N/A"
+
+# Executive KPI Cards (Row of 6 metrics)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
     st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">Total Dispatched Requests</div>
+            <div class="metric-title">Total Requests</div>
             <div class="metric-value">{kpis.total_requests:,}</div>
-            <div class="metric-sub neutral">📦 Delivered: <b>{kpis.total_units_delivered:,} units</b></div>
+            <div class="metric-sub neutral">📦 Delivered: <b>{kpis.delivered_orders:,}</b></div>
         </div>
     """, unsafe_allow_html=True)
 
 with col2:
-    otif_color = "positive" if kpis.otif_rate_pct >= 75.0 else ("neutral" if kpis.otif_rate_pct >= 65.0 else "negative")
+    deliv_rate_str = fmt_pct(kpis.delivery_success_rate_pct)
     st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">OTIF (On-Time In-Full) Rate</div>
-            <div class="metric-value" style="color: {'#10B981' if kpis.otif_rate_pct >= 75 else '#F59E0B'};">{kpis.otif_rate_pct:.1f}%</div>
-            <div class="metric-sub {otif_color}">🎯 Strict SLA + Quality Pass</div>
+            <div class="metric-title">Delivery Success Rate</div>
+            <div class="metric-value" style="color: #10B981;">{deliv_rate_str}</div>
+            <div class="metric-sub positive">✅ On-Time: <b>{kpis.on_time_orders:,}</b> | Late: <b>{kpis.delayed_orders:,}</b></div>
         </div>
     """, unsafe_allow_html=True)
 
 with col3:
-    time_delta = kpis.road_avg_lead_time_hours - kpis.drone_avg_lead_time_hours if kpis.drone_avg_lead_time_hours > 0 else 0
+    std_otif_str = fmt_pct(kpis.standard_otif_rate_pct)
     st.markdown(f"""
-        <div class="metric-card gold">
-            <div class="metric-title">Avg Order Cycle Time</div>
-            <div class="metric-value">{kpis.avg_lead_time_hours:.1f} <span style="font-size: 1.1rem; font-weight: 500; color: #9CA3AF;">hrs</span></div>
-            <div class="metric-sub">⚡ Drones save <b>{time_delta:.1f} hrs/trip</b> vs Road</div>
+        <div class="metric-card">
+            <div class="metric-title">Standard OTIF Rate</div>
+            <div class="metric-value" style="color: {'#10B981' if kpis.standard_otif_rate_pct and kpis.standard_otif_rate_pct >= 75 else '#F59E0B'};">{std_otif_str}</div>
+            <div class="metric-sub">🎯 On-Time & In-Full</div>
         </div>
     """, unsafe_allow_html=True)
 
 with col4:
-    stockout_class = "negative" if kpis.stock_out_rate_pct > 5.0 else "positive"
+    qual_otif_str = fmt_pct(kpis.quality_otif_rate_pct)
     st.markdown(f"""
-        <div class="metric-card alert">
-            <div class="metric-title">Stock-Out Frequency</div>
-            <div class="metric-value" style="color: {'#EF4444' if kpis.stock_out_rate_pct > 5.0 else '#10B981'};">{kpis.stock_out_rate_pct:.1f}%</div>
-            <div class="metric-sub {stockout_class}">⚠️ Unmet demand: <b>{kpis.stock_outs:,} requests</b></div>
+        <div class="metric-card purple">
+            <div class="metric-title">Quality OTIF (OTIF-Q)</div>
+            <div class="metric-value" style="color: #A78BFA;">{qual_otif_str}</div>
+            <div class="metric-sub">❄️ Standard OTIF + Cold Integrity</div>
         </div>
     """, unsafe_allow_html=True)
 
 with col5:
+    avg_lt_str = f"{kpis.avg_lead_time_hours:.1f}" if kpis.avg_lead_time_hours is not None else "N/A"
+    if kpis.drone_road_delta_hours is not None:
+        delta_sub = f"⚡ Drone saves <b>{kpis.drone_road_delta_hours:.1f} hrs/trip</b> vs Road"
+    elif kpis.drone_avg_lead_time_hours is not None:
+        delta_sub = f"⚡ Drone-only active ({kpis.drone_avg_lead_time_hours:.1f} hrs)"
+    elif kpis.road_avg_lead_time_hours is not None:
+        delta_sub = f"🚗 Road-only active ({kpis.road_avg_lead_time_hours:.1f} hrs)"
+    else:
+        delta_sub = "⚡ No deliveries in view"
+
+    st.markdown(f"""
+        <div class="metric-card gold">
+            <div class="metric-title">Avg Order Cycle Time</div>
+            <div class="metric-value">{avg_lt_str} <span style="font-size: 1.0rem; font-weight: 500; color: #9CA3AF;">hrs</span></div>
+            <div class="metric-sub">{delta_sub}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+with col6:
+    cold_str = fmt_pct(kpis.cold_chain_integrity_pct)
     st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">Cold-Chain Integrity Rate</div>
-            <div class="metric-value" style="color: {'#10B981' if kpis.cold_chain_integrity_pct >= 95 else '#F59E0B'};">{kpis.cold_chain_integrity_pct:.1f}%</div>
-            <div class="metric-sub">❄️ Vaccines, Blood & Insulin</div>
+            <div class="metric-title">Cold-Chain Integrity</div>
+            <div class="metric-value" style="color: {'#10B981' if kpis.cold_chain_integrity_pct and kpis.cold_chain_integrity_pct >= 95 else '#F59E0B'};">{cold_str}</div>
+            <div class="metric-sub">❄️ Denom: Delivered Cold Items</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -337,7 +385,7 @@ with col5:
 # -----------------------------------------------------------------------------
 st.markdown("""
     <div class="section-header">
-        <span>📍 Geospatial Distribution Network & Drone Flight Corridors</span>
+        <span>📍 Geospatial Distribution Network & Illustrative Supply Corridors</span>
         <span class="section-badge">PyDeck 3D / Plotly Engine</span>
     </div>
 """, unsafe_allow_html=True)
@@ -345,14 +393,16 @@ st.markdown("""
 map_col1, map_col2 = st.columns([3, 1])
 
 with map_col1:
-    if map_engine_choice == "PyDeck 3D (Flight Arcs)":
-        deck = build_pydeck_logistics_map(
+    if map_engine_choice == "PyDeck 3D (Illustrative Corridors)":
+        deck, unmapped = build_pydeck_logistics_map(
             df_clinic_metrics=df_clinic_metrics,
             df_hubs=engine.df_hubs,
             color_by=map_color_choice,
-            show_flight_arcs=show_flight_corridors,
+            show_supply_corridors=show_supply_corridors,
         )
         st.pydeck_chart(deck, use_container_width=True)
+        if len(unmapped) > 0:
+            st.warning(f"⚠️ Unmapped Hub Relationships: {len(unmapped)} clinic(s) could not be matched to an active hub: {', '.join(unmapped[:3])}")
     else:
         fig_geo = build_plotly_geographic_scatter(
             df_clinic_metrics=df_clinic_metrics,
@@ -367,39 +417,40 @@ with map_col2:
             <div style="font-weight: 700; color: #00D2BA; margin-bottom: 10px; font-size: 0.95rem;">Network Topology Legend</div>
             <div style="margin-bottom: 8px;">
                 <span style="display: inline-block; width: 12px; height: 12px; background: #00D2BA; border-radius: 3px; margin-right: 6px;"></span>
-                <b>Central Hub / Drone Nest</b> (Omenako, Mpanya, Kukua, Sefwi, Ankaful)
+                <b>Distribution Center</b> (Omenako, Mpanya, Kukua, Sefwi, Ankaful)
             </div>
             <div style="margin-bottom: 8px;">
                 <span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Optimal Clinic</b> (OTIF &gt; 85%)
+                <b>Optimal Clinic</b> (Standard OTIF &gt; 80%)
             </div>
             <div style="margin-bottom: 8px;">
                 <span style="display: inline-block; width: 10px; height: 10px; background: #F59E0B; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Moderate Risk Clinic</b> (OTIF 70-85%)
+                <b>Moderate Risk Clinic</b> (Standard OTIF 65–80%)
             </div>
             <div style="margin-bottom: 8px;">
                 <span style="display: inline-block; width: 10px; height: 10px; background: #EF4444; border-radius: 50%; margin-right: 6px;"></span>
-                <b>High Delay Risk</b> (OTIF &lt; 70% or High Stockouts)
+                <b>High Risk Clinic</b> (Standard OTIF &lt; 65% or High Stockouts)
             </div>
             <hr style="border-color: rgba(255,255,255,0.08); margin: 12px 0;">
             <div style="font-size: 0.78rem; color: #9CA3AF; line-height: 1.4;">
-                <b>Terrain Insights:</b><br>
-                High Risk nodes predominantly cluster in <b>Tier 3</b> zones: Afram Plains islands (Eastern), Rainforest belts (Western), and isolated border enclaves (Northern).
+                <b>Route Visualization Notice:</b><br>
+                Arcs depict illustrative logistical supply links between assigned hubs and clinics; they do not represent real-time radar tracks or live flight paths.
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    # Mini high-risk clinics table
-    high_risk_clinics = df_clinic_metrics[df_clinic_metrics["risk_tier"] == "High Risk"].sort_values("otif_rate_pct").head(4)
-    if len(high_risk_clinics) > 0:
-        st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #EF4444; margin: 12px 0 6px 0;'>Critical Bottleneck Clinics:</div>", unsafe_allow_html=True)
-        for _, cln in high_risk_clinics.iterrows():
-            st.markdown(f"""
-                <div style="background: rgba(239, 68, 68, 0.1); border-left: 3px solid #EF4444; padding: 6px 10px; margin-bottom: 6px; border-radius: 0 6px 6px 0; font-size: 0.76rem;">
-                    <b>{cln['clinic_name']}</b> ({cln['region']})<br>
-                    OTIF: <b>{cln['otif_rate_pct']}%</b> | Avg LT: <b>{cln['avg_lead_time_hours']} hrs</b>
-                </div>
-            """, unsafe_allow_html=True)
+    if len(df_clinic_metrics) > 0 and "risk_tier" in df_clinic_metrics.columns:
+        high_risk_clinics = df_clinic_metrics[df_clinic_metrics["risk_tier"] == "High Risk"].sort_values("standard_otif_rate_pct").head(4)
+        if len(high_risk_clinics) > 0:
+            st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #EF4444; margin: 12px 0 6px 0;'>Critical Bottleneck Clinics:</div>", unsafe_allow_html=True)
+            for _, cln in high_risk_clinics.iterrows():
+                st.markdown(f"""
+                    <div style="background: rgba(239, 68, 68, 0.1); border-left: 3px solid #EF4444; padding: 6px 10px; margin-bottom: 6px; border-radius: 0 6px 6px 0; font-size: 0.76rem;">
+                        <b>{cln['clinic_name']}</b> ({cln['region']})<br>
+                        Assigned Hub: <b>{cln['nearest_hub']}</b><br>
+                        Standard OTIF: <b>{cln['standard_otif_rate_pct']}%</b> | Avg LT: <b>{cln['avg_lead_time_hours']} hrs</b>
+                    </div>
+                """, unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------------------------
@@ -421,7 +472,6 @@ chart_tab1, chart_tab2, chart_tab3 = st.tabs([
 # TAB 1: MODAL TRANSPORT EFFICIENCY
 with chart_tab1:
     modal_col1, modal_col2 = st.columns(2)
-
     df_modal = engine.get_modal_comparison(df_filtered)
 
     with modal_col1:
@@ -432,8 +482,8 @@ with chart_tab1:
                 y="avg_lead_time_hours",
                 color="transport_mode",
                 barmode="group",
-                title="Average Lead Time by Distance Band (Hours)",
-                labels={"avg_lead_time_hours": "Average Lead Time (Hours)", "distance_band": "Distance Bracket", "transport_mode": "Transport Fleet"},
+                title="Average Lead Time by Distance Bracket (Hours)",
+                labels={"avg_lead_time_hours": "Average Lead Time (Hours)", "distance_band": "Distance Bracket", "transport_mode": "Modality"},
                 color_discrete_map={"Drone": "#00D2BA", "Road": "#F59E0B"},
                 text_auto=".1f",
             )
@@ -448,18 +498,17 @@ with chart_tab1:
             )
             st.plotly_chart(fig_lead_time, use_container_width=True)
         else:
-            st.info("No shipment records match current filter criteria.")
+            st.info("No delivered shipments available in current filter selection.")
 
     with modal_col2:
-        # Lead time box plot / distribution comparison
-        delivered_subset = df_filtered[df_filtered["order_status"].isin(["Fulfilled", "Delayed"])].copy()
+        delivered_subset = df_filtered[df_filtered["is_delivered"]].copy()
         if len(delivered_subset) > 0:
             fig_box = px.box(
                 delivered_subset,
                 x="remote_tier",
                 y="lead_time_hours",
                 color="transport_mode",
-                title="Lead Time Variance Across Remote Accessibility Tiers",
+                title="Lead Time Distribution Across Remote Accessibility Tiers",
                 labels={"lead_time_hours": "Lead Time (Hours)", "remote_tier": "Accessibility Tier", "transport_mode": "Modality"},
                 color_discrete_map={"Drone": "#00D2BA", "Road": "#F59E0B"},
                 points=False,
@@ -474,36 +523,39 @@ with chart_tab1:
                 yaxis=dict(gridcolor="#1F2937"),
             )
             st.plotly_chart(fig_box, use_container_width=True)
+        else:
+            st.info("No delivered shipments to plot distribution.")
 
-    # Weather impact row
-    st.markdown("#### 🌧️ Weather Shock Resilience: Transit Delays Under Severe Weather")
-    weather_summary = delivered_subset.groupby(["weather_condition", "transport_mode"]).agg(
-        avg_lead_time=("lead_time_hours", "mean"),
-        otif_pct=("is_otif", lambda s: (s.sum() / len(s)) * 100.0),
-        delay_count=("order_status", lambda s: (s == "Delayed").sum()),
-        total=("request_id", "count"),
-    ).reset_index()
+    # Weather impact section
+    st.markdown("#### 🌧️ Weather Impact on Delivery Lead Times")
+    if len(delivered_subset) > 0:
+        weather_summary = delivered_subset.groupby(["weather_condition", "transport_mode"], observed=True).agg(
+            avg_lead_time=("lead_time_hours", "mean"),
+            std_otif_pct=("is_standard_otif", lambda s: (s.sum() / len(s)) * 100.0),
+            delay_count=("is_delayed", "sum"),
+            total=("request_id", "count"),
+        ).reset_index()
 
-    fig_weather = px.bar(
-        weather_summary,
-        x="weather_condition",
-        y="avg_lead_time",
-        color="transport_mode",
-        barmode="group",
-        title="Impact of Weather Severity on Fulfillment Lead Times (Clear vs. Rainy/Flood)",
-        labels={"avg_lead_time": "Average Lead Time (Hours)", "weather_condition": "Weather State", "transport_mode": "Transport Modality"},
-        color_discrete_map={"Drone": "#00D2BA", "Road": "#F59E0B"},
-        text_auto=".2f",
-    )
-    fig_weather.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#E5E7EB"),
-        margin=dict(t=40, b=30, l=40, r=20),
-        xaxis=dict(showgrid=False),
-        yaxis=dict(gridcolor="#1F2937"),
-    )
-    st.plotly_chart(fig_weather, use_container_width=True)
+        fig_weather = px.bar(
+            weather_summary,
+            x="weather_condition",
+            y="avg_lead_time",
+            color="transport_mode",
+            barmode="group",
+            title="Transit Lead Time by Weather Condition and Modality",
+            labels={"avg_lead_time": "Average Lead Time (Hours)", "weather_condition": "Weather State", "transport_mode": "Modality"},
+            color_discrete_map={"Drone": "#00D2BA", "Road": "#F59E0B"},
+            text_auto=".2f",
+        )
+        fig_weather.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#E5E7EB"),
+            margin=dict(t=40, b=30, l=40, r=20),
+            xaxis=dict(showgrid=False),
+            yaxis=dict(gridcolor="#1F2937"),
+        )
+        st.plotly_chart(fig_weather, use_container_width=True)
 
 
 # TAB 2: WEEKLY OTIF & FULFILLMENT TRENDS
@@ -512,13 +564,22 @@ with chart_tab2:
     if len(df_trend) > 0:
         fig_trend = go.Figure()
 
-        # OTIF Rate line
+        # Standard OTIF Rate line
         fig_trend.add_trace(go.Scatter(
             x=df_trend["week_start"],
-            y=df_trend["otif_rate_pct"],
-            name="OTIF Rate (%)",
+            y=df_trend["standard_otif_rate_pct"],
+            name="Standard OTIF (%)",
             line=dict(color="#00D2BA", width=3),
             mode="lines+markers",
+        ))
+
+        # Quality OTIF Rate line
+        fig_trend.add_trace(go.Scatter(
+            x=df_trend["week_start"],
+            y=df_trend["quality_otif_rate_pct"],
+            name="Quality OTIF-Q (%)",
+            line=dict(color="#A78BFA", width=2, dash="dash"),
+            mode="lines",
         ))
 
         # Delay Rate line
@@ -540,7 +601,7 @@ with chart_tab2:
         ))
 
         fig_trend.update_layout(
-            title="Weekly OTIF, Delay, and Stock-Out Rates (Seasonal Monsoon Dip in May-July)",
+            title="Weekly OTIF, Delay, and Stock-Out Rate Trajectories",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#E5E7EB"),
@@ -557,7 +618,7 @@ with chart_tab2:
             df_trend,
             x="week_start",
             y="total_requests",
-            title="Weekly Shipment Request Volume Over 1-Year Operational Horizon",
+            title="Weekly Requisition Volume Over Operational Horizon",
             labels={"week_start": "Week Commencing", "total_requests": "Orders Requested"},
             color_discrete_sequence=["#3B82F6"],
         )
@@ -582,48 +643,54 @@ with chart_tab3:
     diag_col1, diag_col2 = st.columns(2)
 
     with diag_col1:
-        fig_cat = px.bar(
-            cat_stock,
-            x="category",
-            y="stock_out_rate_pct",
-            title="Stock-Out Frequency by Medical Product Category (%)",
-            labels={"stock_out_rate_pct": "Stock-Out Frequency (%)", "category": "Product Category"},
-            color="stock_out_rate_pct",
-            color_continuous_scale="Reds",
-            text_auto=".1f",
-        )
-        fig_cat.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#E5E7EB"),
-            margin=dict(t=50, b=40, l=40, r=20),
-            coloraxis_showscale=False,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(gridcolor="#1F2937"),
-        )
-        st.plotly_chart(fig_cat, use_container_width=True)
+        if len(cat_stock) > 0:
+            fig_cat = px.bar(
+                cat_stock,
+                x="category",
+                y="stock_out_rate_pct",
+                title="Stock-Out Frequency by Medical Product Category (%)",
+                labels={"stock_out_rate_pct": "Stock-Out Frequency (%)", "category": "Product Category"},
+                color="stock_out_rate_pct",
+                color_continuous_scale="Reds",
+                text_auto=".1f",
+            )
+            fig_cat.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#E5E7EB"),
+                margin=dict(t=50, b=40, l=40, r=20),
+                coloraxis_showscale=False,
+                xaxis=dict(showgrid=False),
+                yaxis=dict(gridcolor="#1F2937"),
+            )
+            st.plotly_chart(fig_cat, use_container_width=True)
+        else:
+            st.info("No product categories to display.")
 
     with diag_col2:
-        fig_bot = px.bar(
-            reg_bottlenecks,
-            x="region",
-            y="bottleneck_score",
-            title="Regional Bottleneck Composite Index (Scale 0-100)",
-            labels={"bottleneck_score": "Composite Vulnerability Score", "region": "Administrative Region"},
-            color="bottleneck_score",
-            color_continuous_scale="Viridis",
-            text_auto=".1f",
-        )
-        fig_bot.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#E5E7EB"),
-            margin=dict(t=50, b=40, l=40, r=20),
-            coloraxis_showscale=False,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(gridcolor="#1F2937"),
-        )
-        st.plotly_chart(fig_bot, use_container_width=True)
+        if len(reg_bottlenecks) > 0:
+            fig_bot = px.bar(
+                reg_bottlenecks,
+                x="region",
+                y="bottleneck_score",
+                title="Regional Bottleneck Composite Index (0–100 Scale)",
+                labels={"bottleneck_score": "Composite Vulnerability Score", "region": "Administrative Region"},
+                color="bottleneck_score",
+                color_continuous_scale="Viridis",
+                text_auto=".1f",
+            )
+            fig_bot.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#E5E7EB"),
+                margin=dict(t=50, b=40, l=40, r=20),
+                coloraxis_showscale=False,
+                xaxis=dict(showgrid=False),
+                yaxis=dict(gridcolor="#1F2937"),
+            )
+            st.plotly_chart(fig_bot, use_container_width=True)
+        else:
+            st.info("No regional bottlenecks to compute.")
 
 
 # -----------------------------------------------------------------------------
@@ -632,17 +699,17 @@ with chart_tab3:
 st.markdown("""
     <div class="section-header">
         <span>🔎 Deep-Dive Transactional Shipment Ledger</span>
-        <span class="section-badge">Star Schema Grain: Individual Request</span>
+        <span class="section-badge">Grain: Individual Requisition</span>
     </div>
 """, unsafe_allow_html=True)
 
 table_control_col1, table_control_col2, table_control_col3 = st.columns([2, 1, 1])
 
 with table_control_col1:
-    search_query = st.text_input("🔍 Search Clinic Name, Request ID, or Product", placeholder="e.g., Donkorkrom, Antivenom, REQ-2025-000452")
+    search_query = st.text_input("🔍 Search Clinic, Request ID, or Product (Literal Text)", placeholder="e.g., Donkorkrom, Antivenom, REQ-2025-000452")
 
 with table_control_col2:
-    status_filter = st.selectbox("Order Status Filter", ["All Statuses", "Fulfilled", "Delayed", "Stock-Out"])
+    status_filter = st.selectbox("Order Status Filter", ["All Statuses", "Delivered (On-Time)", "Delivered (Delayed)", "Stock-Out"])
 
 with table_control_col3:
     limit_rows = st.selectbox("Display Row Limit", [50, 100, 250, 1000], index=1)
@@ -650,23 +717,25 @@ with table_control_col3:
 # Apply ledger filters
 df_ledger = df_filtered.copy()
 
-if status_filter != "All Statuses":
-    df_ledger = df_ledger[df_ledger["order_status"] == status_filter]
+if status_filter != "All Statuses" and "order_status_display" in df_ledger.columns:
+    df_ledger = df_ledger[df_ledger["order_status_display"] == status_filter]
 
+# Literal, null-safe text search (regex=False and na=False prevents character crashing like '[')
 if search_query:
     query = search_query.strip().lower()
-    df_ledger = df_ledger[
-        df_ledger["request_id"].str.lower().str.contains(query)
-        | df_ledger["clinic_name"].str.lower().str.contains(query)
-        | df_ledger["product_name"].str.lower().str.contains(query)
-        | df_ledger["region"].str.lower().str.contains(query)
-    ]
+    mask = (
+        df_ledger["request_id"].astype(str).str.lower().str.contains(query, regex=False, na=False)
+        | df_ledger["clinic_name"].astype(str).str.lower().str.contains(query, regex=False, na=False)
+        | df_ledger["product_name"].astype(str).str.lower().str.contains(query, regex=False, na=False)
+        | df_ledger["region"].astype(str).str.lower().str.contains(query, regex=False, na=False)
+    )
+    df_ledger = df_ledger[mask]
 
-# Display relevant star schema projection columns
 display_columns = [
     "request_id",
     "requested_timestamp",
     "clinic_name",
+    "nearest_hub",
     "region",
     "remote_tier",
     "product_name",
@@ -674,20 +743,26 @@ display_columns = [
     "transport_mode",
     "distance_km",
     "lead_time_hours",
-    "order_status",
-    "is_otif",
+    "target_delivery_hours",
+    "order_status_display",
+    "is_on_time",
+    "is_standard_otif",
     "cold_chain_breach",
     "weather_condition",
 ]
 
+# Ensure display columns exist
+available_display_cols = [c for c in display_columns if c in df_ledger.columns]
+
 st.dataframe(
-    df_ledger[display_columns].head(limit_rows),
+    df_ledger[available_display_cols].head(limit_rows),
     use_container_width=True,
     height=340,
     column_config={
         "request_id": st.column_config.TextColumn("Request ID", width="medium"),
         "requested_timestamp": st.column_config.DatetimeColumn("Requested At", format="YYYY-MM-DD HH:mm"),
         "clinic_name": st.column_config.TextColumn("Destination Health Post"),
+        "nearest_hub": st.column_config.TextColumn("Assigned Hub", width="small"),
         "region": st.column_config.TextColumn("Region", width="small"),
         "remote_tier": st.column_config.TextColumn("Tier", width="small"),
         "product_name": st.column_config.TextColumn("Medical Cargo"),
@@ -695,14 +770,16 @@ st.dataframe(
         "transport_mode": st.column_config.TextColumn("Modality", width="small"),
         "distance_km": st.column_config.NumberColumn("Distance (km)", format="%.1f km"),
         "lead_time_hours": st.column_config.NumberColumn("Lead Time", format="%.2f hrs"),
-        "order_status": st.column_config.TextColumn("Status", width="small"),
-        "is_otif": st.column_config.CheckboxColumn("OTIF"),
+        "target_delivery_hours": st.column_config.NumberColumn("Target SLA", format="%.2f hrs"),
+        "order_status_display": st.column_config.TextColumn("Status", width="medium"),
+        "is_on_time": st.column_config.CheckboxColumn("On-Time"),
+        "is_standard_otif": st.column_config.CheckboxColumn("Std OTIF"),
         "cold_chain_breach": st.column_config.CheckboxColumn("Cold Breach"),
         "weather_condition": st.column_config.TextColumn("Weather"),
     }
 )
 
-csv_data = df_ledger[display_columns].to_csv(index=False).encode("utf-8")
+csv_data = df_ledger[available_display_cols].to_csv(index=False).encode("utf-8")
 st.download_button(
     label="📥 Export Filtered Shipment Records (CSV)",
     data=csv_data,
@@ -711,24 +788,26 @@ st.download_button(
 )
 
 # -----------------------------------------------------------------------------
-# 9. Architectural & Methodological Footer
+# 9. Architectural & Methodological Documentation
 # -----------------------------------------------------------------------------
-with st.expander("📐 Technical Architecture, Star Schema & Methodological Notes (Master's Portfolio Support)"):
+with st.expander("📐 Technical Architecture, Star Schema & Methodological Notes"):
     st.markdown("""
     ### Data Engineering & Mathematical Methodology
 
     #### 1. Star Schema Relational Mapping
     - **Fact Table (`fact_shipments`)**: Granularity is one individual logistics request. Keys link to `dim_clinics`, `dim_products`, and `dim_hubs`.
-    - **Physical Distance Calculation**: Great-circle geodesic distance derived via the **Haversine formula**:
+    - **Geodesic Distance Calculation**: Great-circle geodesic distance derived via the **Haversine formula**:
       $$d = 2r \\arcsin \\left( \\sqrt{\\sin^2\\left(\\frac{\\Delta \\phi}{2}\\right) + \\cos(\\phi_1)\\cos(\\phi_2)\\sin^2\\left(\\frac{\\Delta \\lambda}{2}\\right)} \\right)$$
       Road transit paths apply a curvature winding penalty $\\omega \\in [1.35, 1.85]$ reflecting rural terrain degradation.
 
-    #### 2. Rigorous Supply Chain OTIF (On-Time In-Full) Metric
-    An order is strictly defined as **OTIF** if and only if all three validation constraints are satisfied:
-    1. **On-Time**: $\\text{Lead Time} \\le \\text{SLA Target Hours}$
-    2. **In-Full**: $\\text{Units Delivered} = \\text{Units Requested} \\land \\text{Status} \\ne \\text{'Stock-Out'}$
-    3. **Quality / Cold-Chain Integrity**: $\\text{Cold Chain Breach} = \\text{False}$
+    #### 2. Supply Chain OTIF (On-Time In-Full) Definitions
+    - **Standard OTIF**:
+      $$\\text{Standard OTIF} \\iff \\text{On-Time} \\land \\text{In-Full}$$
+      $$\\text{Standard OTIF Rate (\\%)} = \\frac{\\sum (\\mathbb{I}(\\text{OnTime}) \\cdot \\mathbb{I}(\\text{InFull}))}{\\text{Total Requests}} \\times 100$$
+    - **Quality-Adjusted OTIF (OTIF-Q)**:
+      $$\\text{OTIF-Q} \\iff \\text{Standard OTIF} \\land (\\neg \\text{ColdChainBreach})$$
 
-    #### 3. Regional Bottleneck Vulnerability Score
-    $$\\text{Bottleneck Index} = 0.35 \\times \\text{StockOut\\%} + 0.35 \\times \\text{Delay\\%} + 20 \\times \\left(\\frac{\\bar{T}_{\\text{lead}}}{\\max(T_{\\text{lead}})}\\right) + 0.10 \\times \\text{ColdBreach\\%}$$
+    #### 3. Regional Bottleneck Composite Index
+    Normalized against a stable operational reference of 12.0 hours (benchmark max acceptable lead time):
+    $$\\text{Bottleneck Index} = 0.35 \\times \\text{StockOut\\%} + 0.35 \\times \\text{Delay\\%} + 20 \\times \\min\\left(1.0, \\frac{\\bar{T}_{\\text{lead}}}{12.0}\\right) + 0.10 \\times \\text{ColdBreach\\%}$$
     """)

@@ -330,11 +330,8 @@ def generate_fact_shipments(
             delivery_dt = dispatch_dt + timedelta(hours=transit_hours)
             lead_time_hours = total_lead_time_hours
 
-            # On-time performance relative to SLA target
-            sla_target = product["target_delivery_hours"]
-            # Add tolerance for Tier 3 road transport in standard operations
-            effective_sla = sla_target if transport_mode == "Drone" else sla_target * 2.2
-
+            # On-time performance evaluated against consistent product SLA delivery deadline
+            effective_sla = product["target_delivery_hours"]
             is_on_time = lead_time_hours <= effective_sla
             order_status = "Fulfilled" if is_on_time else "Delayed"
 

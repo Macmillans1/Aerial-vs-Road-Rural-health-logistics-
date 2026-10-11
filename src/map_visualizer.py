@@ -1,10 +1,11 @@
 """Geospatial Map Visualizer for Rural Healthcare Logistics in Ghana.
 
-Provides PyDeck 3D flight arcs & clinic pins and Plotly interactive geospatial maps.
+Provides PyDeck 3D illustrative network corridors and Plotly interactive geospatial maps.
 Visualizes distribution hubs, clinic delivery endpoints, risk tiers, and supply corridors.
+Connections represent illustrative routing corridors, not live aerial flight paths.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -28,93 +29,107 @@ def build_pydeck_logistics_map(
     df_clinic_metrics: pd.DataFrame,
     df_hubs: pd.DataFrame,
     color_by: str = "risk_tier",
-    show_flight_arcs: bool = True,
-) -> pdk.Deck:
-    """Construct an interactive PyDeck 3D map featuring distribution hubs, clinics, and flight corridors."""
-    # Prepare clinic layer data
-    df_clinics_map = df_clinic_metrics.copy()
+    show_supply_corridors: bool = True,
+) -> Tuple[pdk.Deck, List[str]]:
+    """Construct an interactive PyDeck 3D map featuring hubs, clinics, and illustrative corridors.
 
-    if color_by == "risk_tier":
-        df_clinics_map["color"] = df_clinics_map["risk_tier"].map(
-            lambda r: PALETTE.get(r, [150, 150, 150, 200])
+    Preserves verified hub relationships. Flags any clinic with an unresolvable hub relationship
+    instead of silently defaulting to an arbitrary distribution center.
+
+    Returns:
+        Tuple[pdk.Deck, List[str]]: The Deck object and a list of clinic names with unmapped hubs.
+    """
+    unmapped_clinics: List[str] = []
+    layers = []
+
+    # 1. Hubs Layer (Distribution Centers)
+    if df_hubs is not None and len(df_hubs) > 0:
+        df_hubs_map = df_hubs.copy()
+        df_hubs_map["color"] = [PALETTE["Hub"] for _ in range(len(df_hubs_map))]
+        hub_layer = pdk.Layer(
+            "ScatterplotLayer",
+            id="distribution-hubs-layer",
+            data=df_hubs_map,
+            get_position=["longitude", "latitude"],
+            get_color="color",
+            get_radius=14000,
+            pickable=True,
+            stroked=True,
+            get_line_color=[255, 255, 255, 240],
+            line_width_min_pixels=2,
+            radius_min_pixels=10,
+            radius_max_pixels=24,
         )
-    else:  # remote_tier
-        df_clinics_map["color"] = df_clinics_map["remote_tier"].map(
-            lambda t: PALETTE.get(t, [150, 150, 150, 200])
-        )
+        layers.append(hub_layer)
 
-    # Clinic Scatterplot Layer
-    clinic_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=df_clinics_map,
-        get_position=["longitude", "latitude"],
-        get_color="color",
-        get_radius=6000,
-        pickable=True,
-        auto_highlight=True,
-        radius_min_pixels=6,
-        radius_max_pixels=18,
-    )
+    # 2. Clinic Endpoints Layer
+    if df_clinic_metrics is not None and len(df_clinic_metrics) > 0:
+        df_clinics_map = df_clinic_metrics.copy()
 
-    # Hubs Scatterplot Layer
-    df_hubs_map = df_hubs.copy()
-    df_hubs_map["color"] = [PALETTE["Hub"] for _ in range(len(df_hubs_map))]
-    hub_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=df_hubs_map,
-        get_position=["longitude", "latitude"],
-        get_color="color",
-        get_radius=14000,
-        pickable=True,
-        stroked=True,
-        get_line_color=[255, 255, 255, 240],
-        line_width_min_pixels=2,
-        radius_min_pixels=10,
-        radius_max_pixels=24,
-    )
+        if color_by == "risk_tier":
+            df_clinics_map["color"] = df_clinics_map["risk_tier"].map(
+                lambda r: PALETTE.get(r, [150, 150, 150, 200])
+            )
+        else:  # remote_tier
+            df_clinics_map["color"] = df_clinics_map["remote_tier"].map(
+                lambda t: PALETTE.get(t, [150, 150, 150, 200])
+            )
 
-    layers = [clinic_layer, hub_layer]
-
-    # Drone Flight Arc Layer
-    if show_flight_arcs:
-        # Build arc dataframe connecting nearest hub to clinics
-        hubs_lookup = df_hubs.set_index("hub_id")[["latitude", "longitude", "hub_name"]].to_dict("index")
-        arc_records = []
-        for _, clinic in df_clinics_map.iterrows():
-            # Find closest hub or default
-            nearest_hub_id = clinic.get("nearest_hub", "HUB-OMN")
-            if nearest_hub_id not in hubs_lookup:
-                nearest_hub_id = "HUB-OMN"
-            hub = hubs_lookup[nearest_hub_id]
-
-            arc_records.append({
-                "source_lon": hub["longitude"],
-                "source_lat": hub["latitude"],
-                "target_lon": clinic["longitude"],
-                "target_lat": clinic["latitude"],
-                "clinic_name": clinic["clinic_name"],
-                "hub_name": hub["hub_name"],
-                "otif": clinic["otif_rate_pct"],
-                "color_start": [0, 210, 186, 160],
-                "color_end": [236, 72, 153, 140] if clinic["risk_tier"] == "High Risk" else [16, 185, 129, 140],
-            })
-
-        df_arcs = pd.DataFrame(arc_records)
-
-        arc_layer = pdk.Layer(
-            "ArcLayer",
-            data=df_arcs,
-            get_source_position=["source_lon", "source_lat"],
-            get_target_position=["target_lon", "target_lat"],
-            get_source_color="color_start",
-            get_target_color="color_end",
-            get_width=2.5,
+        clinic_layer = pdk.Layer(
+            "ScatterplotLayer",
+            id="clinics-endpoints-layer",
+            data=df_clinics_map,
+            get_position=["longitude", "latitude"],
+            get_color="color",
+            get_radius=6000,
             pickable=True,
             auto_highlight=True,
+            radius_min_pixels=6,
+            radius_max_pixels=18,
         )
-        layers.append(arc_layer)
+        layers.append(clinic_layer)
 
-    # Centered over Ghana (approx 7.9° N, -1.0° W)
+        # 3. Illustrative Supply Corridors (Hub to Clinic)
+        if show_supply_corridors and df_hubs is not None and len(df_hubs) > 0:
+            hubs_lookup = df_hubs.set_index("hub_id")[["latitude", "longitude", "hub_name"]].to_dict("index")
+            arc_records = []
+
+            for _, clinic in df_clinics_map.iterrows():
+                hub_id = clinic.get("nearest_hub")
+                # Strict check: Never silently default to Omenako or any fallback hub
+                if not hub_id or hub_id not in hubs_lookup or pd.isna(hub_id):
+                    unmapped_clinics.append(str(clinic.get("clinic_name", clinic.get("clinic_id", "Unknown"))))
+                    continue
+
+                hub = hubs_lookup[hub_id]
+                arc_records.append({
+                    "source_lon": hub["longitude"],
+                    "source_lat": hub["latitude"],
+                    "target_lon": clinic["longitude"],
+                    "target_lat": clinic["latitude"],
+                    "clinic_name": clinic["clinic_name"],
+                    "hub_name": hub["hub_name"],
+                    "otif": clinic.get("standard_otif_rate_pct", 0.0),
+                    "color_start": [0, 210, 186, 160],
+                    "color_end": [239, 68, 68, 160] if clinic.get("risk_tier") == "High Risk" else [16, 185, 129, 140],
+                })
+
+            if len(arc_records) > 0:
+                df_arcs = pd.DataFrame(arc_records)
+                arc_layer = pdk.Layer(
+                    "ArcLayer",
+                    id="illustrative-corridors-layer",
+                    data=df_arcs,
+                    get_source_position=["source_lon", "source_lat"],
+                    get_target_position=["target_lon", "target_lat"],
+                    get_source_color="color_start",
+                    get_target_color="color_end",
+                    get_width=2.2,
+                    pickable=True,
+                    auto_highlight=True,
+                )
+                layers.append(arc_layer)
+
     view_state = pdk.ViewState(
         latitude=7.85,
         longitude=-1.10,
@@ -129,21 +144,25 @@ def build_pydeck_logistics_map(
             <div style="font-weight: 700; font-size: 14px; color: #00D2BA; margin-bottom: 4px;">{clinic_name} {hub_name}</div>
             <div><b>Region:</b> {region}</div>
             <div><b>Classification:</b> {remote_tier} ({risk_tier})</div>
-            <div><b>OTIF Rate:</b> <span style="color: #10B981; font-weight: 700;">{otif_rate_pct}%</span></div>
+            <div><b>Assigned Hub:</b> {nearest_hub}</div>
+            <div><b>Standard OTIF:</b> <span style="color: #10B981; font-weight: 700;">{standard_otif_rate_pct}%</span></div>
+            <div><b>Quality OTIF:</b> {quality_otif_rate_pct}%</div>
             <div><b>Avg Lead Time:</b> {avg_lead_time_hours} hrs</div>
-            <div><b>Orders Logged:</b> {total_orders} (Stockouts: {stock_outs})</div>
+            <div><b>Total Requests:</b> {total_orders} (Stockouts: {stock_outs})</div>
             <div><b>Drone Utilization:</b> {drone_share_pct}%</div>
+            <div style="font-size: 10px; color: #9CA3AF; margin-top: 4px; border-top: 1px solid #374151; padding-top: 4px;">* Corridors represent illustrative logistical links.</div>
         </div>
         """,
         "style": {"backgroundColor": "transparent", "color": "white"}
     }
 
-    return pdk.Deck(
+    deck = pdk.Deck(
         layers=layers,
         initial_view_state=view_state,
         map_style="mapbox://styles/mapbox/dark-v11",
         tooltip=tooltip,
     )
+    return deck, unmapped_clinics
 
 
 def build_plotly_geographic_scatter(
@@ -154,7 +173,6 @@ def build_plotly_geographic_scatter(
     """High-contrast Plotly 2D fallback map of clinics and hubs with telemetry styling."""
     fig = go.Figure()
 
-    # Add Clinics
     color_map = {
         "Optimal": "#10B981",
         "Moderate Risk": "#F59E0B",
@@ -164,49 +182,53 @@ def build_plotly_geographic_scatter(
         "Tier 3": "#EC4899",
     }
 
-    for key in df_clinic_metrics[color_by].unique():
-        subset = df_clinic_metrics[df_clinic_metrics[color_by] == key]
-        fig.add_trace(go.Scattergeo(
-            lon=subset["longitude"],
-            lat=subset["latitude"],
-            text=subset["clinic_name"],
-            name=f"{key}",
-            mode="markers",
-            marker=dict(
-                size=12,
-                color=color_map.get(key, "#9CA3AF"),
-                opacity=0.85,
-                line=dict(width=1, color="#FFFFFF"),
-            ),
-            customdata=subset[["region", "remote_tier", "otif_rate_pct", "avg_lead_time_hours", "total_orders", "stock_outs"]],
-            hovertemplate="""
-            <b>%{text}</b><br>
-            Region: %{customdata[0]}<br>
-            Tier: %{customdata[1]}<br>
-            OTIF: %{customdata[2]}%<br>
-            Avg Lead Time: %{customdata[3]} hrs<br>
-            Total Orders: %{customdata[4]} (Stockouts: %{customdata[5]})<br>
-            <extra></extra>
-            """
-        ))
+    # Add Clinics
+    if df_clinic_metrics is not None and len(df_clinic_metrics) > 0 and color_by in df_clinic_metrics.columns:
+        for key in df_clinic_metrics[color_by].unique():
+            subset = df_clinic_metrics[df_clinic_metrics[color_by] == key]
+            fig.add_trace(go.Scattergeo(
+                lon=subset["longitude"],
+                lat=subset["latitude"],
+                text=subset["clinic_name"],
+                name=f"{key}",
+                mode="markers",
+                marker=dict(
+                    size=12,
+                    color=color_map.get(key, "#9CA3AF"),
+                    opacity=0.85,
+                    line=dict(width=1, color="#FFFFFF"),
+                ),
+                customdata=subset[["region", "remote_tier", "standard_otif_rate_pct", "avg_lead_time_hours", "total_orders", "stock_outs", "nearest_hub"]],
+                hovertemplate="""
+                <b>%{text}</b><br>
+                Region: %{customdata[0]}<br>
+                Tier: %{customdata[1]}<br>
+                Assigned Hub: %{customdata[6]}<br>
+                Standard OTIF: %{customdata[2]}%<br>
+                Avg Lead Time: %{customdata[3]} hrs<br>
+                Total Requests: %{customdata[4]} (Stockouts: %{customdata[5]})<br>
+                <extra></extra>
+                """
+            ))
 
     # Add Hubs
-    fig.add_trace(go.Scattergeo(
-        lon=df_hubs["longitude"],
-        lat=df_hubs["latitude"],
-        text=df_hubs["hub_name"],
-        name="Distribution Hub (Nest)",
-        mode="markers+text",
-        textposition="top right",
-        textfont=dict(color="#00D2BA", size=11),
-        marker=dict(
-            size=18,
-            symbol="diamond",
-            color="#00D2BA",
-            line=dict(width=2, color="#FFFFFF")
-        ),
-        hovertemplate="<b>%{text}</b><br>Regional Medical Hub<extra></extra>"
-    ))
+    if df_hubs is not None and len(df_hubs) > 0:
+        fig.add_trace(go.Scattergeo(
+            lon=df_hubs["longitude"],
+            lat=df_hubs["latitude"],
+            text=df_hubs["hub_name"],
+            name="Distribution Center",
+            mode="markers+text",
+            textposition="top right",
+            textfont=dict(color="#00D2BA", size=11),
+            marker=dict(
+                size=18,
+                symbol="diamond",
+                color="#00D2BA",
+                line=dict(width=2, color="#FFFFFF")
+            ),
+            hovertemplate="<b>%{text}</b><br>Distribution Fulfillment Center<extra></extra>"
+        ))
 
     fig.update_layout(
         geo=dict(
