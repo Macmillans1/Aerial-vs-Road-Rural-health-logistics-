@@ -400,7 +400,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-map_col1, map_col2 = st.columns([3, 1])
+map_col1, map_col2 = st.columns([2.8, 1.2])
 
 with map_col1:
     if map_engine_choice == "PyDeck 3D (Illustrative Corridors)":
@@ -425,80 +425,85 @@ with map_col1:
 
 with map_col2:
     if map_color_choice == "risk_tier":
-        legend_nodes_html = """
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Optimal Clinic</b> (Std OTIF &ge; 80%)
-            </div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #F59E0B; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Moderate Risk</b> (Std OTIF 65–80%)
-            </div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #EF4444; border-radius: 50%; margin-right: 6px;"></span>
-                <b>High Risk</b> (Std OTIF &lt; 65% or Stockout &gt; 8%)
-            </div>
-        """
-        legend_explainer = """
-            <b>Threshold Rationale:</b><br>
-            • <b>&ge; 80%</b>: Meets emergency target reliability benchmarks.<br>
-            • <b>65–80%</b>: Elevated delay volatility requiring buffer stock.<br>
-            • <b>&lt; 65% / &gt; 8% stockout</b>: Critical service gaps risking life-saving treatment access.
-        """
+        legend_nodes_html = """<div style="font-weight: 600; color: #E2E8F0; margin: 10px 0 6px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Clinic Risk Classification</div>
+<div style="display: flex; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 10px; height: 10px; background: #10B981; border: 1.5px solid #FFFFFF; border-radius: 50%; margin-right: 8px; flex-shrink: 0;"></span>
+    <span><b>Optimal Clinic</b> (Std OTIF &ge; 80%)</span>
+</div>
+<div style="display: flex; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 10px; height: 10px; background: #F59E0B; border: 1.5px solid #FFFFFF; border-radius: 50%; margin-right: 8px; flex-shrink: 0;"></span>
+    <span><b>Moderate Risk</b> (Std OTIF 65–80%)</span>
+</div>
+<div style="display: flex; align-items: center; margin-bottom: 8px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 10px; height: 10px; background: #EF4444; border: 1.5px solid #FFFFFF; border-radius: 50%; margin-right: 8px; flex-shrink: 0;"></span>
+    <span><b>High Risk</b> (&lt; 65% OTIF or &gt; 8% Stockout)</span>
+</div>"""
+        legend_explainer = """<b>Threshold Rationale:</b><br>
+• <b>&ge; 80%</b>: Meets emergency target reliability benchmarks.<br>
+• <b>65–80%</b>: Elevated delay volatility requiring buffer stock.<br>
+• <b>&lt; 65% / &gt; 8% stockout</b>: Critical service gaps risking treatment access."""
     else:
-        legend_nodes_html = """
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #3B82F6; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Tier 1</b>: Peri-urban accessible
-            </div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #8B5CF6; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Tier 2</b>: Rural unpaved corridor
-            </div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #EC4899; border-radius: 50%; margin-right: 6px;"></span>
-                <b>Tier 3</b>: Isolated rainforest / riverine
-            </div>
-        """
-        legend_explainer = """
-            <b>Terrain Classification:</b><br>
-            Reflects road infrastructure decay and terrain winding multipliers (1.35x to 1.85x).
-        """
+        legend_nodes_html = """<div style="font-weight: 600; color: #E2E8F0; margin: 10px 0 6px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Clinic Remoteness Tier</div>
+<div style="display: flex; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 10px; height: 10px; background: #3B82F6; border: 1.5px solid #FFFFFF; border-radius: 50%; margin-right: 8px; flex-shrink: 0;"></span>
+    <span><b>Tier 1</b>: Peri-urban accessible (&lt; 50 km)</span>
+</div>
+<div style="display: flex; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 10px; height: 10px; background: #8B5CF6; border: 1.5px solid #FFFFFF; border-radius: 50%; margin-right: 8px; flex-shrink: 0;"></span>
+    <span><b>Tier 2</b>: Rural unpaved (50–150 km)</span>
+</div>
+<div style="display: flex; align-items: center; margin-bottom: 8px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 10px; height: 10px; background: #EC4899; border: 1.5px solid #FFFFFF; border-radius: 50%; margin-right: 8px; flex-shrink: 0;"></span>
+    <span><b>Tier 3</b>: Remote rainforest / riverine (&gt; 150 km)</span>
+</div>"""
+        legend_explainer = """<b>Terrain Classification:</b><br>
+Reflects road infrastructure decay and terrain winding multipliers (1.35x to 1.85x) that increase road travel times."""
 
-    st.markdown(f"""
-        <div style="background: rgba(22, 31, 48, 0.7); border-radius: 12px; padding: 16px; border: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.85rem;">
-            <div style="font-weight: 700; color: #00D2BA; margin-bottom: 10px; font-size: 0.95rem;">Network Topology Legend</div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 12px; height: 12px; background: #00D2BA; border-radius: 3px; margin-right: 6px;"></span>
-                <b>Active Hub</b> (Dispatches in active filter)
-            </div>
-            <div style="margin-bottom: 8px;">
-                <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #9CA3AF; background: #6B7280; border-radius: 3px; margin-right: 6px;"></span>
-                <b>Configured Hub</b> (0 dispatches in filter)
-            </div>
-            {legend_nodes_html}
-            <hr style="border-color: rgba(255,255,255,0.08); margin: 12px 0;">
-            <div style="font-size: 0.78rem; color: #9CA3AF; line-height: 1.4;">
-                {legend_explainer}
-                <div style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">
-                    * Corridors represent illustrative logistical links; not live radar tracks.
-                </div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    corridor_legend_html = ""
+    if show_supply_corridors:
+        corridor_legend_html = """<div style="font-weight: 600; color: #E2E8F0; margin: 10px 0 6px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Supply Corridors</div>
+<div style="display: flex; align-items: center; margin-bottom: 8px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 20px; height: 3px; background: linear-gradient(90deg, #00D2BA, #10B981); border-radius: 2px; margin-right: 8px; flex-shrink: 0;"></span>
+    <span><b>Illustrative Links</b> (Hub &rarr; Clinic)</span>
+</div>"""
+
+    legend_card_html = f"""<div style="background: rgba(22, 31, 48, 0.75); border-radius: 12px; padding: 16px; border: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.85rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);">
+<div style="font-weight: 700; color: #00D2BA; margin-bottom: 12px; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+    <span>🗺️</span> <span>Network Topology Legend</span>
+</div>
+<div style="font-weight: 600; color: #E2E8F0; margin: 6px 0 6px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Distribution Hubs</div>
+<div style="display: flex; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 9px; height: 9px; background: #00D2BA; border: 1.5px solid #FFFFFF; transform: rotate(45deg); margin-right: 8px; margin-left: 2px; flex-shrink: 0; box-shadow: 0 0 4px rgba(0,210,186,0.6);"></span>
+    <span><b>Active Hub</b> (Dispatches in filter)</span>
+</div>
+<div style="display: flex; align-items: center; margin-bottom: 8px; font-size: 0.82rem;">
+    <span style="display: inline-block; width: 8px; height: 8px; background: transparent; border: 1.5px solid #9CA3AF; transform: rotate(45deg); margin-right: 8px; margin-left: 2px; flex-shrink: 0;"></span>
+    <span><b>Configured Hub</b> (0 dispatches in filter)</span>
+</div>
+{legend_nodes_html}
+{corridor_legend_html}
+<hr style="border-color: rgba(255,255,255,0.08); margin: 10px 0;">
+<div style="font-size: 0.76rem; color: #9CA3AF; line-height: 1.4;">
+    {legend_explainer}
+    <div style="margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; color: #6B7280;">
+        * Corridors indicate illustrative supply connections, not live aerial tracks.
+    </div>
+</div>
+</div>"""
+
+    st.markdown(legend_card_html, unsafe_allow_html=True)
 
     if len(df_clinic_metrics) > 0 and "risk_tier" in df_clinic_metrics.columns:
         high_risk_clinics = df_clinic_metrics[df_clinic_metrics["risk_tier"] == "High Risk"].sort_values("standard_otif_rate_pct").head(4)
         if len(high_risk_clinics) > 0:
-            st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #EF4444; margin: 12px 0 6px 0;'>Critical Bottleneck Clinics:</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #EF4444; margin: 12px 0 6px 0;'>⚠️ Critical Bottleneck Clinics:</div>", unsafe_allow_html=True)
             for _, cln in high_risk_clinics.iterrows():
-                st.markdown(f"""
-                    <div style="background: rgba(239, 68, 68, 0.1); border-left: 3px solid #EF4444; padding: 6px 10px; margin-bottom: 6px; border-radius: 0 6px 6px 0; font-size: 0.76rem;">
-                        <b>{cln['clinic_name']}</b> ({cln['region']})<br>
-                        Assigned Hub: <b>{cln['nearest_hub']}</b><br>
-                        Standard OTIF: <b>{cln['standard_otif_rate_pct']}%</b> | Avg LT: <b>{cln['avg_lead_time_hours']} hrs</b>
-                    </div>
-                """, unsafe_allow_html=True)
+                clinic_pill_html = f"""<div style="background: rgba(239, 68, 68, 0.12); border-left: 3px solid #EF4444; padding: 6px 10px; margin-bottom: 6px; border-radius: 0 6px 6px 0; font-size: 0.76rem;">
+<b>{cln['clinic_name']}</b> ({cln['region']})<br>
+Assigned Hub: <b>{cln['nearest_hub']}</b><br>
+Standard OTIF: <b>{cln['standard_otif_rate_pct']}%</b> | Avg LT: <b>{cln['avg_lead_time_hours']} hrs</b>
+</div>"""
+                st.markdown(clinic_pill_html, unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------------------------
