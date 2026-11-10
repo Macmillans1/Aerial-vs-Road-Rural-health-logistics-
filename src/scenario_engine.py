@@ -230,6 +230,22 @@ def simulate_scenario(
     scenario_order_status_display[scenario_is_delayed] = "Delivered (Delayed)"
     df_scenario["scenario_order_status_display"] = scenario_order_status_display
 
+    # Retain raw CSV order_status explicitly labeled as raw_order_status
+    if "order_status" in df_scenario.columns:
+        df_scenario["raw_order_status"] = df_scenario["order_status"]
+
+    # Baseline recalculated order status display (consistent with baseline on-time flags)
+    if "order_status_display" in df_scenario.columns:
+        df_scenario["baseline_order_status_display"] = df_scenario["order_status_display"]
+    else:
+        baseline_order_status_display = pd.Series(index=df_scenario.index, dtype=object)
+        baseline_order_status_display[df_scenario["order_status"] == "Stock-Out"] = "Stock-Out"
+        base_on_time = df_scenario.get("is_on_time", pd.Series(False, index=df_scenario.index))
+        base_delayed = df_scenario.get("is_delayed", pd.Series(False, index=df_scenario.index))
+        baseline_order_status_display[base_on_time] = "Delivered (On-Time)"
+        baseline_order_status_display[base_delayed] = "Delivered (Delayed)"
+        df_scenario["baseline_order_status_display"] = baseline_order_status_display
+
     # Flag records whose on-time delivery status changed relative to baseline
     baseline_on_time = df_scenario.get("is_on_time", pd.Series(False, index=df_scenario.index))
     df_scenario["on_time_status_changed"] = (

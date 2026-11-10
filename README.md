@@ -1,6 +1,6 @@
 
 
-# 🚁 Rural Healthcare Supply Chain & Drone Logistics Analytics (Ghana)
+# Rural Healthcare Supply Chain & Drone Logistics Analytics (Ghana)
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B.svg?logo=streamlit&logoColor=white)](https://streamlit.io/)
@@ -161,6 +161,27 @@ The dashboard integrates an interactive **What-If Scenario Simulator** ([`src/sc
 - **Timing Only**: Quality observations (cold-chain breach audit status) and inventory availability (stock-out outcomes) are held constant.
 - **Out of Scope**: Fleet capacity constraints (discrete vehicle counts), queuing at launch nests, payload weight feasibility, mode switching, and dynamic cold-chain breach generation or recovery are outside this simulator's scope.
 
+### 7. Clinic & Hub Explorer Purpose, Filter Behaviour & Operational Scope
+
+The dashboard includes a dedicated **Clinic & Hub Explorer** tab allowing supply chain managers and clinicians to drill down into individual destination health clinics and dispatch hubs.
+
+#### Purpose & Capabilities:
+- **Granular Scorecard**: Evaluates total requests, delivered orders, actual dispatches, stock-out rate, Standard OTIF, Quality-Adjusted OTIF (OTIF-Q), average and 90th-percentile delivered lead times, verified cold-chain integrity, and unknown-quality telemetry counts.
+- **Network Topology Distinction**: Clearly distinguishes a clinic's administratively assigned hub (`dim_clinics.nearest_hub`) from fulfillment hubs that actually handled its requisitions in the selected period.
+- **Hub Reach & Utilization Precision**: For hubs, displays the number of unique clinics represented in the active shipment cohort. Request volume share is explicitly reported as demand share and is never conflated with vehicle fleet utilization.
+- **Focused Diagnostics**: Provides weekly request volume vs. OTIF trajectories, detailed product-level breakdown (requests, delivered, SLA-delayed, delay rates, stock-outs, unmet units), a granular requisition ledger with audit quality status, and filtered CSV downloads.
+- **Local What-If Simulation**: Allows testing drone/road staging adjustments and weather friction directly on the selected location's requisition cohort, with prominent location labeling and local scenario CSV export (`raw_order_status`, `baseline_order_status_display`, `scenario_order_status_display`).
+
+#### Filter Behaviour & State Lifecycle:
+- **Hierarchical Intersection**: The location selection applies strictly on top of active sidebar filters (regions, dates, categories, modes, tiers).
+- **Local Isolation**: Explorer selections are isolated to the Explorer tab and never silently modify the global dashboard's filter state or KPIs.
+- **Safe Handling of Inactive/Empty Locations**: Configured locations with zero matching records (e.g. unlaunched hub `HUB-ANK` or clinics filtered out by date/category) display complete dimensional metadata, a clear "No requests in this selection" notice, zero counts, and `N/A` rates. The system never silently falls back to another location.
+- **Automatic Invalidation**: Whenever the selected location or any sidebar filter changes, stored scenario results and downloads are immediately invalidated, ensuring planners never inspect mismatched simulation outputs.
+
+#### Operational Limitations:
+- **Simulated Grain**: The explorer analyzes historical requisition batches and simulated timing adjustments; it does not connect to live GPS telematics, active transponders, or dynamic rerouting engines.
+- **Static Fleet Allocations**: Vehicle fleet sizes and serviced radii recorded in dimension tables are reference attributes and are not dynamically constrained by vehicle scheduling algorithms.
+
 ---
 
 ## 5. Repository Structure
@@ -173,7 +194,7 @@ d:/Rural Logistics/
 │   ├── fact_shipments.csv        # 12,500 multi-modal logistics records
 │   ├── dim_clinics.csv           # 32 clinics mapped across 6 administrative regions
 │   ├── dim_products.csv          # 14 medical items (antivenom, blood, vaccines, essential meds)
-│   └── dim_hubs.csv              # 5 central fulfillment hubs
+│   └── dim_hubs.csv              # 5 central fulfillment hubs (including inactive HUB-ANK)
 ├── scripts/
 │   └── generate_simulation_table.py # Reproducible script generating Markdown KPI tables
 ├── src/
@@ -184,8 +205,9 @@ d:/Rural Logistics/
 │   └── scenario_engine.py        # What-If simulator engine with deterministic sensitivity modeling
 ├── tests/
 │   ├── test_logistics.py         # Data validation, schema integrity & ledger tests
-│   └── test_scenario_simulator.py # Comprehensive scenario simulator test suite
-├── app.py                        # Streamlit dashboard entry point with What-If simulator tab
+│   ├── test_scenario_simulator.py # Comprehensive scenario simulator test suite
+│   └── test_explorer.py          # Clinic & Hub explorer, scenario export, and UI interaction tests
+├── app.py                        # Streamlit dashboard entry point with Explorer & What-If tabs
 ├── requirements.txt              # Dependency specifications
 └── README.md                     # Technical architecture documentation
 ```

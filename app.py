@@ -27,7 +27,6 @@ from src.scenario_engine import ScenarioParameters, simulate_scenario
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Ghana Rural Healthcare Logistics Telemetry",
-    page_icon="🚁",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -166,7 +165,7 @@ def get_metrics_engine() -> SupplyChainMetricsEngine:
 try:
     engine = get_metrics_engine()
 except DataValidationError as exc:
-    st.error(f"❌ Data Validation Error: {exc}")
+    st.error(f"Data Validation Error: {exc}")
     st.stop()
 
 
@@ -176,7 +175,7 @@ except DataValidationError as exc:
 with st.sidebar:
     st.markdown("""
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-            <div style="background: linear-gradient(135deg, #00D2BA, #3B82F6); padding: 8px; border-radius: 10px; font-size: 20px;">🚁</div>
+            <div style="background: linear-gradient(135deg, #00D2BA, #3B82F6); width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; color: #FFFFFF; letter-spacing: 0.5px;">AM</div>
             <div>
                 <div style="font-weight: 800; font-size: 1.05rem; color: #FFFFFF; line-height: 1.2;">AERO-MED GHANA</div>
                 <div style="font-size: 0.72rem; color: #00D2BA; letter-spacing: 0.05em; font-weight: 600;">LOGISTICS TELEMETRY</div>
@@ -185,7 +184,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("### 🎛️ Multidimensional Filters")
+    st.markdown("### Multidimensional Filters")
 
     # Region Multi-Select
     available_regions = sorted(engine.df_clinics["region"].unique().tolist())
@@ -235,7 +234,7 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.markdown("### 🗺️ Map Display Preferences")
+    st.markdown("### Map Display Preferences")
     map_engine_choice = st.radio("Map Rendering Engine", ["PyDeck 3D (Illustrative Corridors)", "Plotly 2D Scatter"], index=0)
     map_color_choice = st.selectbox(
         "Color Clinics By",
@@ -292,7 +291,6 @@ active_products_count = df_filtered["product_id"].nunique() if len(df_filtered) 
 # -----------------------------------------------------------------------------
 st.markdown("""
     <div class="synthetic-banner">
-        <span>ℹ️</span>
         <span><b>Synthetic Data Notice:</b> All shipment telemetry, GPS coordinates, lead times, and operational records in this dashboard are generated synthetically for supply chain analytics and simulation modeling.</span>
     </div>
 """, unsafe_allow_html=True)
@@ -315,7 +313,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 if len(df_filtered) == 0:
-    st.warning("⚠️ No shipment records match the selected filter criteria. Please broaden your selection in the sidebar.")
+    st.warning("No shipment records match the selected filter criteria. Please broaden your selection in the sidebar.")
 
 # Helper formatting function
 def fmt_pct(val: Optional[float]) -> str:
@@ -332,7 +330,7 @@ with row1_col1:
         <div class="metric-card">
             <div class="metric-title">Total Requests</div>
             <div class="metric-value">{kpis.total_requests:,}</div>
-            <div class="metric-sub neutral">📦 Delivered: <b>{kpis.delivered_orders:,}</b> &nbsp;•&nbsp; Stock-outs: <b>{kpis.stock_outs:,}</b></div>
+            <div class="metric-sub neutral">Delivered: <b>{kpis.delivered_orders:,}</b> &nbsp;•&nbsp; Stock-outs: <b>{kpis.stock_outs:,}</b></div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -342,20 +340,20 @@ with row1_col2:
         <div class="metric-card">
             <div class="metric-title">Delivery Success Rate</div>
             <div class="metric-value" style="color: #10B981;">{deliv_rate_str}</div>
-            <div class="metric-sub positive">✅ On-Time: <b>{kpis.on_time_orders:,}</b> &nbsp;•&nbsp; Late: <b>{kpis.delayed_orders:,}</b></div>
+            <div class="metric-sub positive">On-Time: <b>{kpis.on_time_orders:,}</b> &nbsp;•&nbsp; Late: <b>{kpis.delayed_orders:,}</b></div>
         </div>
     """, unsafe_allow_html=True)
 
 with row1_col3:
     avg_lt_str = f"{kpis.avg_lead_time_hours:.1f}" if kpis.avg_lead_time_hours is not None else "N/A"
     if kpis.drone_road_delta_hours is not None:
-        delta_sub = f"⚡ Diff in avg simulated lead time: <b>-{kpis.drone_road_delta_hours:.1f} hrs</b> (Drone vs Road)"
+        delta_sub = f"Diff in avg simulated lead time: <b>-{kpis.drone_road_delta_hours:.1f} hrs</b> (Drone vs Road)"
     elif kpis.drone_avg_lead_time_hours is not None:
-        delta_sub = f"⚡ Drone-only active ({kpis.drone_avg_lead_time_hours:.1f} hrs)"
+        delta_sub = f"Drone-only active ({kpis.drone_avg_lead_time_hours:.1f} hrs)"
     elif kpis.road_avg_lead_time_hours is not None:
-        delta_sub = f"🚗 Road-only active ({kpis.road_avg_lead_time_hours:.1f} hrs)"
+        delta_sub = f"Road-only active ({kpis.road_avg_lead_time_hours:.1f} hrs)"
     else:
-        delta_sub = "⚡ No deliveries in view"
+        delta_sub = "No deliveries in view"
 
     st.markdown(f"""
         <div class="metric-card gold">
@@ -375,7 +373,7 @@ with row2_col1:
         <div class="metric-card">
             <div class="metric-title">Standard OTIF Rate</div>
             <div class="metric-value" style="color: {'#10B981' if kpis.standard_otif_rate_pct and kpis.standard_otif_rate_pct >= 75 else '#F59E0B'};">{std_otif_str}</div>
-            <div class="metric-sub">🎯 Strict SLA: On-Time & In-Full</div>
+            <div class="metric-sub">Strict SLA: On-Time & In-Full</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -385,7 +383,7 @@ with row2_col2:
         <div class="metric-card purple">
             <div class="metric-title">Quality OTIF (OTIF-Q)</div>
             <div class="metric-value" style="color: #A78BFA;">{qual_otif_str}</div>
-            <div class="metric-sub">❄️ Standard OTIF + Thermal Compliance</div>
+            <div class="metric-sub">Standard OTIF + Thermal Compliance</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -396,7 +394,7 @@ with row2_col3:
         <div class="metric-card">
             <div class="metric-title">Cold-Chain Thermal Integrity</div>
             <div class="metric-value" style="color: {'#10B981' if kpis.cold_chain_integrity_pct and kpis.cold_chain_integrity_pct >= 95 else '#F59E0B'};">{cold_str}</div>
-            <div class="metric-sub">❄️ Denom: {kpis.total_delivered_cold_orders:,} Delivered Cold Items{unknown_note}</div>
+            <div class="metric-sub">Denom: {kpis.total_delivered_cold_orders:,} Delivered Cold Items{unknown_note}</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -406,7 +404,7 @@ with row2_col3:
 # -----------------------------------------------------------------------------
 st.markdown("""
     <div class="section-header">
-        <span>📍 Geospatial Distribution Network & Illustrative Supply Corridors</span>
+        <span>Geospatial Distribution Network & Illustrative Supply Corridors</span>
         <span class="section-badge">PyDeck 3D / Plotly Engine</span>
     </div>
 """, unsafe_allow_html=True)
@@ -424,7 +422,7 @@ with map_col1:
         )
         st.pydeck_chart(deck, use_container_width=True)
         if len(unmapped) > 0:
-            st.warning(f"⚠️ Unmapped Hub Relationships: {len(unmapped)} clinic(s) could not be matched to an active hub: {', '.join(unmapped[:3])}")
+            st.warning(f"Unmapped Hub Relationships: {len(unmapped)} clinic(s) could not be matched to an active hub: {', '.join(unmapped[:3])}")
     else:
         fig_geo = build_plotly_geographic_scatter(
             df_clinic_metrics=df_clinic_metrics,
@@ -479,8 +477,8 @@ Reflects road infrastructure decay and terrain winding multipliers (1.35x to 1.8
 </div>"""
 
     legend_card_html = f"""<div style="background: rgba(22, 31, 48, 0.75); border-radius: 12px; padding: 16px; border: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.85rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);">
-<div style="font-weight: 700; color: #00D2BA; margin-bottom: 12px; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
-    <span>🗺️</span> <span>Network Topology Legend</span>
+<div style="font-weight: 700; color: #00D2BA; margin-bottom: 12px; font-size: 0.95rem;">
+    <span>Network Topology Legend</span>
 </div>
 <div style="font-weight: 600; color: #E2E8F0; margin: 6px 0 6px 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px;">Distribution Hubs</div>
 <div style="display: flex; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
@@ -507,7 +505,7 @@ Reflects road infrastructure decay and terrain winding multipliers (1.35x to 1.8
     if len(df_clinic_metrics) > 0 and "risk_tier" in df_clinic_metrics.columns:
         high_risk_clinics = df_clinic_metrics[df_clinic_metrics["risk_tier"] == "High Risk"].sort_values("standard_otif_rate_pct").head(4)
         if len(high_risk_clinics) > 0:
-            st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #EF4444; margin: 12px 0 6px 0;'>⚠️ Critical Bottleneck Clinics:</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 0.82rem; font-weight: 700; color: #EF4444; margin: 12px 0 6px 0;'>Critical Bottleneck Clinics:</div>", unsafe_allow_html=True)
             for _, cln in high_risk_clinics.iterrows():
                 clinic_pill_html = f"""<div style="background: rgba(239, 68, 68, 0.12); border-left: 3px solid #EF4444; padding: 6px 10px; margin-bottom: 6px; border-radius: 0 6px 6px 0; font-size: 0.76rem;">
 <b>{cln['clinic_name']}</b> ({cln['region']})<br>
@@ -522,17 +520,19 @@ Standard OTIF: <b>{cln['standard_otif_rate_pct']}%</b> | Avg LT: <b>{cln['avg_le
 # -----------------------------------------------------------------------------
 st.markdown("""
     <div class="section-header">
-        <span>📊 Operational Performance & Modal Efficiency Breakdown</span>
+        <span>Operational Performance & Modal Efficiency Breakdown</span>
         <span class="section-badge">Drone Velocity vs. Rural Road Logistics</span>
     </div>
 """, unsafe_allow_html=True)
 
-chart_tab1, chart_tab2, chart_tab3, chart_tab4 = st.tabs([
-    "🚀 Transport Efficiency (Drone vs. Road)",
-    "📈 Weekly OTIF & Fulfillment Trends",
-    "⚠️ Regional Bottlenecks & Stock-Out Diagnostics",
-    "🔮 What-If Scenario Simulator",
+chart_tab1, chart_tab2, chart_tab3, chart_tab4, chart_tab5 = st.tabs([
+    "Transport Efficiency (Drone vs. Road)",
+    "Weekly OTIF & Fulfillment Trends",
+    "Regional Bottlenecks & Stock-Out Diagnostics",
+    "What-If Scenario Simulator",
+    "Clinic & Hub Explorer",
 ])
+
 
 # TAB 1: MODAL TRANSPORT EFFICIENCY
 with chart_tab1:
@@ -592,7 +592,7 @@ with chart_tab1:
             st.info("No delivered shipments to plot distribution.")
 
     # Weather impact section
-    st.markdown("#### 🌧️ Weather Impact on Delivery Lead Times")
+    st.markdown("#### Weather Impact on Delivery Lead Times")
     if len(delivered_subset) > 0:
         weather_summary = delivered_subset.groupby(["weather_condition", "transport_mode"], observed=True).agg(
             avg_lead_time=("lead_time_hours", "mean"),
@@ -761,7 +761,7 @@ with chart_tab3:
 with chart_tab4:
     st.markdown("""
         <div style="font-size: 1.15rem; font-weight: 700; color: #F3F4F6; margin-bottom: 4px;">
-            🔮 Multi-Modal What-If Operational Scenario Simulator
+            Multi-Modal What-If Operational Scenario Simulator
         </div>
         <div style="font-size: 0.85rem; color: #9CA3AF; margin-bottom: 12px;">
             Evaluate how pre-flight drone preparation adjustments, ground fleet dispatch delays, and seasonal severe weather affect SLA attainment.
@@ -791,7 +791,7 @@ with chart_tab4:
 
     if st.session_state.get("scenario_applied", False):
         if st.session_state.get("scenario_filter_sig") != current_filter_sig:
-            st.warning("⚠️ Active sidebar filters have changed since the scenario was applied. Re-apply the scenario to calculate results for the current cohort.")
+            st.warning("Active sidebar filters have changed since the scenario was applied. Re-apply the scenario to calculate results for the current cohort.")
             st.session_state["scenario_applied"] = False
 
     # Control form
@@ -799,7 +799,7 @@ with chart_tab4:
         scen_ctrl_col1, scen_ctrl_col2 = st.columns(2)
 
         with scen_ctrl_col1:
-            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #00D2BA; margin-bottom: 8px;'>⏱️ Dispatch Preparation Adjustments</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #00D2BA; margin-bottom: 8px;'>Dispatch Preparation Adjustments</div>", unsafe_allow_html=True)
             drone_prep_adj = st.slider(
                 "Drone Preparation-Time Adjustment (mins)",
                 min_value=-30,
@@ -818,7 +818,7 @@ with chart_tab4:
             )
 
         with scen_ctrl_col2:
-            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #F59E0B; margin-bottom: 8px;'>🌧️ Severe Weather Transit Delay</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #F59E0B; margin-bottom: 8px;'>Severe Weather Transit Delay</div>", unsafe_allow_html=True)
             weather_delay = st.slider(
                 "Additional Weather Transit Delay (mins)",
                 min_value=0,
@@ -843,12 +843,12 @@ with chart_tab4:
 
         form_btn_col1, form_btn_col2 = st.columns([1, 1])
         with form_btn_col1:
-            apply_submitted = st.form_submit_button("⚡ Apply Scenario", type="primary", use_container_width=True)
+            apply_submitted = st.form_submit_button("Apply Scenario", type="primary", use_container_width=True)
 
     # Reset button (outside form to allow resetting state cleanly)
     reset_col1, reset_col2 = st.columns([1, 3])
     with reset_col1:
-        if st.button("🔄 Reset Scenario", use_container_width=True, help="Restores default controls (0 timing adjustments) and clears the applied scenario."):
+        if st.button("Reset Scenario", use_container_width=True, help="Restores default controls (0 timing adjustments) and clears the applied scenario."):
             st.session_state["scenario_applied"] = False
             st.session_state["scen_drone_prep_adj"] = 0
             st.session_state["scen_road_prep_adj"] = 0
@@ -882,12 +882,12 @@ with chart_tab4:
         scen_summary = scenario_res.summary
 
         if len(df_filtered) == 0:
-            st.warning("⚠️ No shipment records match the active filter criteria. Broaden your filters to view scenario simulation.")
+            st.warning("No shipment records match the active filter criteria. Broaden your filters to view scenario simulation.")
         elif scen_summary.delivered_requests == 0:
-            st.info("ℹ️ The active selection contains stock-out requests only. No shipments were delivered, so lead times and on-time delivery rates are N/A.")
+            st.info("The active selection contains stock-out requests only. No shipments were delivered, so lead times and on-time delivery rates are N/A.")
         else:
             # 1. Headline Comparisons Table
-            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 10px 0;'>📊 Performance Comparison: Baseline vs. Scenario</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 10px 0;'>Performance Comparison: Baseline vs. Scenario</div>", unsafe_allow_html=True)
 
             comparison_rows = []
             for m in scen_summary.metric_rows:
@@ -989,7 +989,7 @@ with chart_tab4:
                     st.info("No regional comparisons available.")
 
             # 3. Table of Requests whose on-time status changed
-            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 8px 0;'>⚠️ Requisitions with Changed On-Time Delivery Status</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 8px 0;'>Requisitions with Changed On-Time Delivery Status</div>", unsafe_allow_html=True)
             changed_records = scen_df[scen_df["on_time_status_changed"]].copy()
 
             if len(changed_records) > 0:
@@ -1025,10 +1025,10 @@ with chart_tab4:
                     }
                 )
             else:
-                st.info("ℹ️ No requisitions changed on-time delivery status under this scenario (timing adjustments did not cause or resolve any delivery SLA breaches).")
+                st.info("No requisitions changed on-time delivery status under this scenario (timing adjustments did not cause or resolve any delivery SLA breaches).")
 
             # 4. Downloads: CSV and JSON Exports
-            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 8px 0;'>📥 Export Scenario Telemetry & Analytics</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 8px 0;'>Export Scenario Telemetry & Analytics</div>", unsafe_allow_html=True)
             dl_col1, dl_col2 = st.columns(2)
 
             with dl_col1:
@@ -1038,12 +1038,12 @@ with chart_tab4:
                     "scenario_prep_change_minutes", "scenario_weather_delay_minutes", "is_on_time",
                     "scenario_is_on_time", "is_delayed", "scenario_is_delayed", "is_standard_otif",
                     "scenario_is_standard_otif", "is_quality_otif", "scenario_is_quality_otif",
-                    "order_status", "scenario_order_status_display",
+                    "raw_order_status", "baseline_order_status_display", "scenario_order_status_display",
                 ]
                 avail_export_cols = [c for c in export_cols if c in scen_df.columns]
                 csv_bytes = scen_df[avail_export_cols].to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    label="📥 Download Request-Level Scenario CSV",
+                    label="Download Request-Level Scenario CSV",
                     data=csv_bytes,
                     file_name=f"what_if_scenario_shipments_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv",
@@ -1071,14 +1071,500 @@ with chart_tab4:
                 }
                 json_bytes = json.dumps(json_payload, indent=2).encode("utf-8")
                 st.download_button(
-                    label="📥 Download Scenario Summary JSON",
+                    label="Download Scenario Summary JSON",
                     data=json_bytes,
                     file_name=f"what_if_scenario_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                     mime="application/json",
                     use_container_width=True,
                 )
     else:
-        st.info("💡 Adjust the scenario parameters above and click **⚡ Apply Scenario** to calculate comparative operational metrics.")
+        st.info("Adjust the scenario parameters above and click **Apply Scenario** to calculate comparative operational metrics.")
+
+
+# TAB 5: CLINIC & HUB EXPLORER
+with chart_tab5:
+    st.markdown("""
+        <div style="font-size: 1.15rem; font-weight: 700; color: #F3F4F6; margin-bottom: 4px;">
+            Clinic & Hub Operational Explorer
+        </div>
+        <div style="font-size: 0.85rem; color: #9CA3AF; margin-bottom: 14px;">
+            Granular drill-down into individual destination health posts and fulfillment hubs under active regional and temporal filters.
+        </div>
+    """, unsafe_allow_html=True)
+
+    exp_ctrl_col1, exp_ctrl_col2 = st.columns([1, 2])
+    with exp_ctrl_col1:
+        explorer_loc_type = st.radio(
+            "Explore by:",
+            ["Clinic", "Hub"],
+            horizontal=True,
+            key="explorer_loc_type",
+            help="Select whether to analyze an individual destination health clinic or a dispatching fulfillment hub."
+        )
+
+    with exp_ctrl_col2:
+        if explorer_loc_type == "Clinic":
+            clinic_dim = engine.df_clinics.sort_values("clinic_name")
+            clinic_id_list = clinic_dim["clinic_id"].tolist()
+            clinic_name_dict = dict(zip(clinic_dim["clinic_id"], clinic_dim["clinic_name"]))
+            selected_loc_id = st.selectbox(
+                "Select Destination Health Clinic:",
+                options=clinic_id_list,
+                format_func=lambda cid: f"{clinic_name_dict.get(cid, cid)} ({cid})",
+                key="explorer_clinic_selector",
+                help="Searchable clinic selector displaying clinic names while preserving stable internal IDs."
+            )
+            selected_loc_name = clinic_name_dict.get(selected_loc_id, selected_loc_id)
+        else:
+            hub_dim = engine.df_hubs.sort_values("hub_name")
+            hub_id_list = hub_dim["hub_id"].tolist()
+            hub_name_dict = dict(zip(hub_dim["hub_id"], hub_dim["hub_name"]))
+            selected_loc_id = st.selectbox(
+                "Select Dispatch / Fulfillment Hub:",
+                options=hub_id_list,
+                format_func=lambda hid: f"{hub_name_dict.get(hid, hid)} ({hid})",
+                key="explorer_hub_selector",
+                help="Searchable hub selector displaying hub names while preserving stable internal IDs."
+            )
+            selected_loc_name = hub_name_dict.get(selected_loc_id, selected_loc_id)
+
+    # Location selection applies strictly on top of existing sidebar filters
+    df_loc = engine.filter_by_location(df_filtered, explorer_loc_type, selected_loc_id)
+
+    # Build location metadata summary
+    hub_name_map = dict(zip(engine.df_hubs["hub_id"], engine.df_hubs["hub_name"]))
+    if explorer_loc_type == "Clinic":
+        clinic_meta_match = engine.df_clinics[engine.df_clinics["clinic_id"] == selected_loc_id]
+        if len(clinic_meta_match) > 0:
+            c_meta = clinic_meta_match.iloc[0]
+            loc_region = c_meta.get("region", "N/A")
+            loc_tier = c_meta.get("remote_tier", "N/A")
+            loc_pop = f"{int(c_meta.get('population_served', 0)):,} residents" if pd.notna(c_meta.get("population_served")) else "N/A"
+            assigned_hub_id = c_meta.get("nearest_hub", "N/A")
+            assigned_hub_display = f"{hub_name_map.get(assigned_hub_id, assigned_hub_id)} ({assigned_hub_id})"
+        else:
+            loc_region, loc_tier, loc_pop, assigned_hub_display = "N/A", "N/A", "N/A", "N/A"
+
+        # Hubs that actually handled requests for this clinic in the active cohort
+        if len(df_loc) > 0 and "hub_id" in df_loc.columns:
+            handling_hub_counts = df_loc.groupby("hub_id")["request_id"].count().to_dict()
+            handling_hubs_text = ", ".join([f"{hub_name_map.get(h, h)} ({h}): {cnt:,} requests" for h, cnt in handling_hub_counts.items()])
+        else:
+            handling_hubs_text = "None in active selection"
+
+        meta_col1, meta_col2, meta_col3 = st.columns(3)
+        with meta_col1:
+            st.markdown(f"""
+                <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(55, 65, 81, 0.7); border-radius: 8px; padding: 10px 14px; font-size: 0.82rem;">
+                    <span style="color: #9CA3AF; text-transform: uppercase; font-size: 0.72rem; font-weight: 600;">Clinic Identity</span><br>
+                    <b style="color: #00D2BA; font-size: 0.95rem;">{selected_loc_name}</b><br>
+                    <span style="color: #E5E7EB;">ID: <code>{selected_loc_id}</code> | Region: <b>{loc_region}</b></span>
+                </div>
+            """, unsafe_allow_html=True)
+        with meta_col2:
+            st.markdown(f"""
+                <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(55, 65, 81, 0.7); border-radius: 8px; padding: 10px 14px; font-size: 0.82rem;">
+                    <span style="color: #9CA3AF; text-transform: uppercase; font-size: 0.72rem; font-weight: 600;">Accessibility & Demographics</span><br>
+                    <span style="color: #E5E7EB;">Remote Tier: <b>{loc_tier}</b></span><br>
+                    <span style="color: #E5E7EB;">Catchment Population: <b>{loc_pop}</b></span>
+                </div>
+            """, unsafe_allow_html=True)
+        with meta_col3:
+            st.markdown(f"""
+                <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(55, 65, 81, 0.7); border-radius: 8px; padding: 10px 14px; font-size: 0.82rem;">
+                    <span style="color: #9CA3AF; text-transform: uppercase; font-size: 0.72rem; font-weight: 600;">Hub Network Topology</span><br>
+                    <span style="color: #E5E7EB;">Assigned Hub: <b>{assigned_hub_display}</b></span><br>
+                    <span style="color: #9CA3AF; font-size: 0.76rem;">Actual Fulfilling Hubs: {handling_hubs_text}</span>
+                </div>
+            """, unsafe_allow_html=True)
+    else:
+        hub_meta_match = engine.df_hubs[engine.df_hubs["hub_id"] == selected_loc_id]
+        if len(hub_meta_match) > 0:
+            h_meta = hub_meta_match.iloc[0]
+            loc_region = h_meta.get("region", "N/A")
+            loc_radius = f"{h_meta.get('serviced_radius_km', 'N/A')} km"
+            loc_fleet = f"{h_meta.get('vehicle_fleet_size', 'N/A')} vehicles"
+        else:
+            loc_region, loc_radius, loc_fleet = "N/A", "N/A", "N/A"
+
+        clinics_represented = df_loc["clinic_id"].nunique() if len(df_loc) > 0 else 0
+        total_clinics_assigned = len(engine.df_clinics[engine.df_clinics["nearest_hub"] == selected_loc_id])
+        req_share = (len(df_loc) / len(df_filtered) * 100.0) if len(df_filtered) > 0 else 0.0
+
+        meta_col1, meta_col2, meta_col3 = st.columns(3)
+        with meta_col1:
+            st.markdown(f"""
+                <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(55, 65, 81, 0.7); border-radius: 8px; padding: 10px 14px; font-size: 0.82rem;">
+                    <span style="color: #9CA3AF; text-transform: uppercase; font-size: 0.72rem; font-weight: 600;">Hub Identity</span><br>
+                    <b style="color: #3B82F6; font-size: 0.95rem;">{selected_loc_name}</b><br>
+                    <span style="color: #E5E7EB;">ID: <code>{selected_loc_id}</code> | Region: <b>{loc_region}</b></span>
+                </div>
+            """, unsafe_allow_html=True)
+        with meta_col2:
+            st.markdown(f"""
+                <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(55, 65, 81, 0.7); border-radius: 8px; padding: 10px 14px; font-size: 0.82rem;">
+                    <span style="color: #9CA3AF; text-transform: uppercase; font-size: 0.72rem; font-weight: 600;">Capacity & Service Radius</span><br>
+                    <span style="color: #E5E7EB;">Configured Fleet: <b>{loc_fleet}</b></span><br>
+                    <span style="color: #E5E7EB;">Service Radius: <b>{loc_radius}</b></span>
+                </div>
+            """, unsafe_allow_html=True)
+        with meta_col3:
+            st.markdown(f"""
+                <div style="background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(55, 65, 81, 0.7); border-radius: 8px; padding: 10px 14px; font-size: 0.82rem;">
+                    <span style="color: #9CA3AF; text-transform: uppercase; font-size: 0.72rem; font-weight: 600;">Network Reach & Volume</span><br>
+                    <span style="color: #E5E7EB;">Clinics Represented in Selection: <b>{clinics_represented:,}</b> (of {total_clinics_assigned} assigned)</span><br>
+                    <span style="color: #9CA3AF; font-size: 0.76rem;">Selected Request Share: {len(df_loc):,} orders ({req_share:.1f}% of filtered requests)</span>
+                </div>
+            """, unsafe_allow_html=True)
+
+    # Active Sidebar Filters summary bar
+    active_filters_text = (
+        f"Regions: {', '.join(selected_regions) if selected_regions else 'All'} | "
+        f"Dates: {start_filter_date} to {end_filter_date} | "
+        f"Categories: {', '.join(selected_categories) if selected_categories else 'All'} | "
+        f"Modes: {', '.join(selected_modes) if selected_modes else 'All'} | "
+        f"Tiers: {', '.join(selected_tiers) if selected_tiers else 'All'}"
+    )
+    st.markdown(f"""
+        <div style="background: rgba(31, 41, 55, 0.5); border-left: 3px solid #6366F1; padding: 6px 12px; margin: 8px 0 14px 0; border-radius: 0 6px 6px 0; font-size: 0.76rem; color: #9CA3AF;">
+            <b>Active Context Filters Intersecting Location:</b> {active_filters_text}
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Handle Empty / Inactive Location Case
+    if len(df_loc) == 0:
+        st.warning(f"**No requests in this selection** for {selected_loc_name} ({selected_loc_id}). Active sidebar filters or operational inactivity exclude any matching records.")
+        
+        # Display zero counts and N/A rates as required by Requirement 6
+        kpi_row1_c1, kpi_row1_c2, kpi_row1_c3, kpi_row1_c4, kpi_row1_c5 = st.columns(5)
+        kpi_row1_c1.metric("Total Requisitions", "0", help="Total requisition requests in active selection.")
+        kpi_row1_c2.metric("Delivered Orders", "0", help="Delivered requisitions with verified receipt.")
+        kpi_row1_c3.metric("Actual Dispatches", "0", help="Shipments with recorded dispatch timestamp.")
+        kpi_row1_c4.metric("Stock-Out Rate", "N/A", help="Stock-out frequency.")
+        kpi_row1_c5.metric("Standard OTIF", "N/A", help="On-Time In-Full fulfillment rate.")
+
+        kpi_row2_c1, kpi_row2_c2, kpi_row2_c3, kpi_row2_c4, kpi_row2_c5 = st.columns(5)
+        kpi_row2_c1.metric("Quality OTIF (OTIF-Q)", "N/A", help="Standard OTIF with thermal quality compliance.")
+        kpi_row2_c2.metric("Avg Delivered Lead Time", "N/A", help="Average transit and prep lead time.")
+        kpi_row2_c3.metric("90th-Percentile Lead Time", "N/A", help="P90 delivered lead time.")
+        kpi_row2_c4.metric("Cold-Chain Integrity", "N/A", help="Verified thermal pass rate.")
+        kpi_row2_c5.metric("Unknown Quality Count", "0", help="Delivered cold-chain orders with missing quality audit.")
+    else:
+        # Compute location performance KPIs reusing existing metrics engine
+        loc_kpis = engine.compute_location_kpis(df_loc)
+
+        # Performance KPI Scorecard
+        st.markdown("<div style='font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin: 12px 0 8px 0;'>Location Operational Scorecard</div>", unsafe_allow_html=True)
+        kpi_row1_c1, kpi_row1_c2, kpi_row1_c3, kpi_row1_c4, kpi_row1_c5 = st.columns(5)
+        kpi_row1_c1.metric("Total Requisitions", f"{loc_kpis.total_requests:,}")
+        kpi_row1_c2.metric(
+            "Delivered Orders",
+            f"{loc_kpis.delivered_requests:,}",
+            help=f"Denominator: {loc_kpis.total_requests:,} total requests ({loc_kpis.delivered_requests/loc_kpis.total_requests*100:.1f}%)" if loc_kpis.total_requests > 0 else None
+        )
+        kpi_row1_c3.metric(
+            "Actual Dispatches",
+            f"{loc_kpis.actual_dispatches:,}",
+            help=f"Denominator: {loc_kpis.total_requests:,} total requests ({loc_kpis.actual_dispatches/loc_kpis.total_requests*100:.1f}%)" if loc_kpis.total_requests > 0 else None
+        )
+        kpi_row1_c4.metric(
+            "Stock-Out Rate",
+            f"{loc_kpis.stock_out_rate_pct:.1f}%" if loc_kpis.stock_out_rate_pct is not None else "N/A",
+            help=f"Denominator: {loc_kpis.total_requests:,} total requests ({loc_kpis.stock_outs:,} stock-outs)"
+        )
+        kpi_row1_c5.metric(
+            "Standard OTIF",
+            f"{loc_kpis.standard_otif_rate_pct:.1f}%" if loc_kpis.standard_otif_rate_pct is not None else "N/A",
+            help=f"Denominator: {loc_kpis.total_requests:,} total requests (On-Time & In-Full)"
+        )
+
+        kpi_row2_c1, kpi_row2_c2, kpi_row2_c3, kpi_row2_c4, kpi_row2_c5 = st.columns(5)
+        kpi_row2_c1.metric(
+            "Quality OTIF (OTIF-Q)",
+            f"{loc_kpis.quality_otif_rate_pct:.1f}%" if loc_kpis.quality_otif_rate_pct is not None else "N/A",
+            help=f"Denominator: {loc_kpis.total_requests:,} total requests (Standard OTIF & Quality Pass)"
+        )
+        kpi_row2_c2.metric(
+            "Avg Delivered Lead Time",
+            f"{loc_kpis.avg_lead_time_hours:.2f} hrs" if loc_kpis.avg_lead_time_hours is not None else "N/A",
+            help=f"Denominator: {loc_kpis.delivered_requests:,} delivered orders"
+        )
+        kpi_row2_c3.metric(
+            "90th-Percentile Lead Time",
+            f"{loc_kpis.p90_lead_time_hours:.2f} hrs" if loc_kpis.p90_lead_time_hours is not None else "N/A",
+            help=f"Denominator: {loc_kpis.delivered_requests:,} delivered orders"
+        )
+        known_cold_count = loc_kpis.total_delivered_cold_orders - loc_kpis.unknown_quality_cold_orders
+        kpi_row2_c4.metric(
+            "Cold-Chain Integrity",
+            f"{loc_kpis.cold_chain_integrity_pct:.1f}%" if loc_kpis.cold_chain_integrity_pct is not None else "N/A",
+            help=f"Denominator: {known_cold_count:,} delivered cold orders with verified audit status" if known_cold_count > 0 else "No audited cold-chain deliveries"
+        )
+        kpi_row2_c5.metric(
+            "Unknown Quality Count",
+            f"{loc_kpis.unknown_quality_cold_orders:,}",
+            help=f"Delivered cold-chain orders with missing audit telemetry (excluded from compliance denominator)"
+        )
+
+        # Focused Diagnostics (Requirement 4)
+        st.markdown("<div style='font-size: 1.0rem; font-weight: 700; color: #FFFFFF; margin: 20px 0 8px 0;'>Focused Location Diagnostics</div>", unsafe_allow_html=True)
+        diag_col1, diag_col2 = st.columns(2)
+
+        with diag_col1:
+            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #E5E7EB; margin-bottom: 6px;'>Weekly Request Volume & OTIF Attainment</div>", unsafe_allow_html=True)
+            df_loc_trend = engine.get_weekly_trend(df_loc)
+            if len(df_loc_trend) > 0:
+                fig_loc_trend = go.Figure()
+                fig_loc_trend.add_trace(go.Bar(
+                    x=df_loc_trend["week_start"],
+                    y=df_loc_trend["total_requests"],
+                    name="Request Volume",
+                    marker_color="#3B82F6",
+                    yaxis="y",
+                    opacity=0.6,
+                ))
+                fig_loc_trend.add_trace(go.Scatter(
+                    x=df_loc_trend["week_start"],
+                    y=df_loc_trend["standard_otif_rate_pct"],
+                    name="Standard OTIF (%)",
+                    line=dict(color="#00D2BA", width=2.5),
+                    mode="lines+markers",
+                    yaxis="y2",
+                ))
+                fig_loc_trend.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#E5E7EB"),
+                    margin=dict(t=30, b=40, l=40, r=40),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(title="Requisition Volume", gridcolor="#1F2937"),
+                    yaxis2=dict(title="Standard OTIF (%)", overlaying="y", side="right", range=[0, 105], showgrid=False),
+                    height=280,
+                )
+                st.plotly_chart(fig_loc_trend, use_container_width=True)
+            else:
+                st.info("Insufficient longitudinal data for weekly trends.")
+
+        with diag_col2:
+            st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #E5E7EB; margin-bottom: 6px;'>Medical Product Breakdown & SLA Risk</div>", unsafe_allow_html=True)
+            prod_diag_df = engine.get_location_product_diagnostics(df_loc)
+            if len(prod_diag_df) > 0:
+                st.dataframe(
+                    prod_diag_df,
+                    use_container_width=True,
+                    height=280,
+                    hide_index=True,
+                    column_config={
+                        "product_name": st.column_config.TextColumn("Product"),
+                        "category": st.column_config.TextColumn("Category"),
+                        "request_count": st.column_config.NumberColumn("Requests", format="%d"),
+                        "delivered_count": st.column_config.NumberColumn("Delivered", format="%d"),
+                        "late_delivery_count": st.column_config.NumberColumn("Late Delivered", format="%d"),
+                        "delay_rate_pct": st.column_config.NumberColumn("Delay Rate", format="%.1f%%"),
+                        "stock_outs": st.column_config.NumberColumn("Stock-Outs", format="%d"),
+                        "unmet_units": st.column_config.NumberColumn("Unmet Units", format="%d"),
+                    }
+                )
+            else:
+                st.info("No product demand recorded.")
+
+        # Request Ledger & CSV Export
+        st.markdown("<div style='font-size: 0.95rem; font-weight: 700; color: #FFFFFF; margin: 18px 0 6px 0;'>Filtered Location Requisition Ledger</div>", unsafe_allow_html=True)
+        ledger_cols = [
+            "request_id", "product_name", "transport_mode", "target_delivery_hours",
+            "lead_time_hours", "order_status_display", "cold_chain_breach", "storage_requirement"
+        ]
+        avail_ledger_cols = [c for c in ledger_cols if c in df_loc.columns]
+        ledger_view = df_loc[avail_ledger_cols].copy()
+        
+        # Friendly cold chain audit display
+        if "cold_chain_breach" in ledger_view.columns:
+            def format_quality(row):
+                if row.get("storage_requirement") != "Cold Chain":
+                    return "Ambient (Exempt)"
+                if pd.isna(row.get("cold_chain_breach")):
+                    return "Unknown (Missing Audit)"
+                return "Pass (No Breach)" if row.get("cold_chain_breach") is False else "Fail (Thermal Breach)"
+            ledger_view["cold_chain_quality"] = ledger_view.apply(format_quality, axis=1)
+            drop_cols = [c for c in ["cold_chain_breach", "storage_requirement"] if c in ledger_view.columns]
+            ledger_view = ledger_view.drop(columns=drop_cols)
+
+        st.dataframe(
+            ledger_view,
+            use_container_width=True,
+            height=250,
+            column_config={
+                "request_id": st.column_config.TextColumn("Request ID"),
+                "product_name": st.column_config.TextColumn("Product"),
+                "transport_mode": st.column_config.TextColumn("Modality"),
+                "target_delivery_hours": st.column_config.NumberColumn("SLA Deadline", format="%.2f hrs"),
+                "lead_time_hours": st.column_config.NumberColumn("Delivered Lead Time", format="%.2f hrs"),
+                "order_status_display": st.column_config.TextColumn("Recalculated Status"),
+                "cold_chain_quality": st.column_config.TextColumn("Cold-Chain Quality"),
+            }
+        )
+
+        # CSV Download for selected location's filtered requests
+        loc_csv_bytes = df_loc.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label=f"Download Filtered {explorer_loc_type} Requisitions CSV ({len(df_loc):,} records)",
+            data=loc_csv_bytes,
+            file_name=f"{explorer_loc_type.lower()}_{selected_loc_id}_filtered_requests_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        # Connect Existing Simulator (Requirement 5)
+        st.markdown("<div style='font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 24px 0 4px 0;'>Location What-If Scenario Simulator</div>", unsafe_allow_html=True)
+        st.caption(f"Evaluate sensitivity of delivery timing and SLA attainment specifically for **{selected_loc_name} ({selected_loc_id})** (Cohort: N = {len(df_loc):,}).")
+
+        # Invalidate local scenario when location or sidebar filters change
+        current_loc_sig = (
+            explorer_loc_type,
+            selected_loc_id,
+            tuple(sorted(selected_regions)) if selected_regions else (),
+            str(start_filter_date),
+            str(end_filter_date),
+            tuple(sorted(selected_categories)) if selected_categories else (),
+            tuple(sorted(selected_modes)) if selected_modes else (),
+            tuple(sorted(selected_tiers)) if selected_tiers else (),
+        )
+
+        if st.session_state.get("explorer_loc_scen_applied", False):
+            if st.session_state.get("explorer_scen_sig") != current_loc_sig:
+                st.warning("Selected location or active sidebar filters have changed. Re-apply scenario to calculate results for the updated cohort.")
+                st.session_state["explorer_loc_scen_applied"] = False
+
+        with st.form(key="explorer_scenario_form"):
+            loc_scen_col1, loc_scen_col2 = st.columns(2)
+            with loc_scen_col1:
+                st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #00D2BA; margin-bottom: 8px;'>Dispatch Preparation Adjustments</div>", unsafe_allow_html=True)
+                loc_drone_prep = st.slider(
+                    "Drone Prep Adjustment (mins)",
+                    min_value=-30, max_value=120,
+                    value=int(st.session_state.get("exp_scen_drone_prep", 0)),
+                    step=5,
+                    key="loc_drone_prep_slider",
+                )
+                loc_road_prep = st.slider(
+                    "Road Prep Adjustment (mins)",
+                    min_value=-60, max_value=240,
+                    value=int(st.session_state.get("exp_scen_road_prep", 0)),
+                    step=5,
+                    key="loc_road_prep_slider",
+                )
+            with loc_scen_col2:
+                st.markdown("<div style='font-size: 0.88rem; font-weight: 600; color: #F59E0B; margin-bottom: 8px;'>Severe Weather Transit Delay</div>", unsafe_allow_html=True)
+                loc_weather_delay = st.slider(
+                    "Severe Weather Delay (mins)",
+                    min_value=0, max_value=180,
+                    value=int(st.session_state.get("exp_scen_weather_delay", 0)),
+                    step=5,
+                    key="loc_weather_delay_slider",
+                )
+                avail_weather = sorted(engine.df_master["weather_condition"].dropna().unique().tolist())
+                loc_weather_cats = st.multiselect(
+                    "Weather Categories Subject to Delay",
+                    options=avail_weather,
+                    default=st.session_state.get("exp_scen_weather_cats", [c for c in ["Heavy Rain", "Severe Storm/Flood"] if c in avail_weather]),
+                    key="loc_weather_cats_select",
+                )
+                loc_weather_modes = st.multiselect(
+                    "Transport Modes Subject to Weather Delay",
+                    options=["Drone", "Road"],
+                    default=st.session_state.get("exp_scen_weather_modes", ["Drone", "Road"]),
+                    key="loc_weather_modes_select",
+                )
+
+            loc_apply_submitted = st.form_submit_button("Apply Location Scenario", type="primary", use_container_width=True)
+
+        loc_reset_col1, _ = st.columns([1, 3])
+        with loc_reset_col1:
+            if st.button("Reset Location Scenario", use_container_width=True, key="reset_loc_scen_btn"):
+                st.session_state["explorer_loc_scen_applied"] = False
+                st.session_state["exp_scen_drone_prep"] = 0
+                st.session_state["exp_scen_road_prep"] = 0
+                st.session_state["exp_scen_weather_delay"] = 0
+                st.session_state["exp_scen_weather_cats"] = [c for c in ["Heavy Rain", "Severe Storm/Flood"] if c in avail_weather]
+                st.session_state["exp_scen_weather_modes"] = ["Drone", "Road"]
+                st.rerun()
+
+        if loc_apply_submitted:
+            st.session_state["explorer_loc_scen_applied"] = True
+            st.session_state["explorer_scen_sig"] = current_loc_sig
+            st.session_state["exp_scen_drone_prep"] = loc_drone_prep
+            st.session_state["exp_scen_road_prep"] = loc_road_prep
+            st.session_state["exp_scen_weather_delay"] = loc_weather_delay
+            st.session_state["exp_scen_weather_cats"] = loc_weather_cats
+            st.session_state["exp_scen_weather_modes"] = loc_weather_modes
+            st.rerun()
+
+        if st.session_state.get("explorer_loc_scen_applied", False):
+            loc_scenario_params = ScenarioParameters(
+                drone_prep_adj_minutes=float(st.session_state.get("exp_scen_drone_prep", 0)),
+                road_prep_adj_minutes=float(st.session_state.get("exp_scen_road_prep", 0)),
+                weather_delay_minutes=float(st.session_state.get("exp_scen_weather_delay", 0)),
+                weather_categories=tuple(st.session_state.get("exp_scen_weather_cats", ["Heavy Rain", "Severe Storm/Flood"])),
+                weather_modes=tuple(st.session_state.get("exp_scen_weather_modes", ["Drone", "Road"])),
+            )
+
+            loc_scen_res = simulate_scenario(df_loc, loc_scenario_params)
+            loc_scen_df = loc_scen_res.df
+            loc_scen_summary = loc_scen_res.summary
+
+            st.markdown(f"<div style='font-size: 0.95rem; font-weight: 700; color: #FFFFFF; margin: 16px 0 8px 0;'>Simulation Outcomes: {selected_loc_name} ({selected_loc_id})</div>", unsafe_allow_html=True)
+            
+            loc_comp_rows = []
+            for m in loc_scen_summary.metric_rows:
+                base_v = f"{m.baseline_value:.2f} {m.unit}" if m.baseline_value is not None else "N/A"
+                scen_v = f"{m.scenario_value:.2f} {m.unit}" if m.scenario_value is not None else "N/A"
+                if m.change_value is not None:
+                    chg_v = f"{m.change_value:+.2f} pp" if m.is_percentage_point else f"{m.change_value:+.2f} {m.unit}"
+                else:
+                    chg_v = "N/A"
+                loc_comp_rows.append({
+                    "Operational Metric": m.metric_name,
+                    "Baseline": base_v,
+                    "Scenario": scen_v,
+                    "Change": chg_v,
+                    "Denominator Basis": m.denominator_explanation,
+                })
+            st.dataframe(pd.DataFrame(loc_comp_rows), use_container_width=True, hide_index=True)
+
+            # Requisitions with Changed Status
+            loc_changed = loc_scen_df[loc_scen_df["on_time_status_changed"]].copy()
+            if len(loc_changed) > 0:
+                st.caption(f"{len(loc_changed):,} requisitions changed on-time delivery status for this location.")
+                changed_cols = [
+                    "request_id", "product_name", "transport_mode", "target_delivery_hours",
+                    "lead_time_hours", "scenario_lead_time_hours", "is_on_time", "scenario_is_on_time"
+                ]
+                avail_chg_cols = [c for c in changed_cols if c in loc_changed.columns]
+                st.dataframe(loc_changed[avail_chg_cols], use_container_width=True, height=200)
+
+            # Export Location Scenario CSV
+            loc_exp_cols = [
+                "request_id", "clinic_name", "region", "remote_tier", "product_name", "category",
+                "transport_mode", "target_delivery_hours", "lead_time_hours", "scenario_lead_time_hours",
+                "scenario_prep_change_minutes", "scenario_weather_delay_minutes", "is_on_time",
+                "scenario_is_on_time", "is_delayed", "scenario_is_delayed", "is_standard_otif",
+                "scenario_is_standard_otif", "is_quality_otif", "scenario_is_quality_otif",
+                "raw_order_status", "baseline_order_status_display", "scenario_order_status_display",
+            ]
+            avail_loc_exp = [c for c in loc_exp_cols if c in loc_scen_df.columns]
+            loc_scen_csv = loc_scen_df[avail_loc_exp].to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label=f"Download {selected_loc_name} Scenario CSV ({len(loc_scen_df):,} records)",
+                data=loc_scen_csv,
+                file_name=f"{explorer_loc_type.lower()}_{selected_loc_id}_scenario_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="dl_loc_scen_csv",
+            )
+        else:
+            st.info("Adjust local scenario parameters above and click **Apply Location Scenario** to simulate operational impact on this location.")
+
 
 
 # -----------------------------------------------------------------------------
@@ -1086,7 +1572,7 @@ with chart_tab4:
 # -----------------------------------------------------------------------------
 st.markdown("""
     <div class="section-header">
-        <span>🔎 Deep-Dive Transactional Shipment Ledger</span>
+        <span>Deep-Dive Transactional Shipment Ledger</span>
         <span class="section-badge">Grain: Individual Requisition</span>
     </div>
 """, unsafe_allow_html=True)
@@ -1094,7 +1580,7 @@ st.markdown("""
 table_control_col1, table_control_col2, table_control_col3 = st.columns([2, 1, 1])
 
 with table_control_col1:
-    search_query = st.text_input("🔍 Search Clinic, Request ID, or Product (Literal Text)", placeholder="e.g., Donkorkrom, Antivenom, REQ-2025-000452")
+    search_query = st.text_input("Search Clinic, Request ID, or Product (Literal Text)", placeholder="e.g., Donkorkrom, Antivenom, REQ-2025-000452")
 
 with table_control_col2:
     status_filter = st.selectbox("Order Status Filter", ["All Statuses", "Delivered (On-Time)", "Delivered (Delayed)", "Stock-Out"])
@@ -1155,7 +1641,7 @@ st.dataframe(
 
 csv_data = df_ledger[available_display_cols].to_csv(index=False).encode("utf-8")
 st.download_button(
-    label="📥 Export Filtered Shipment Records (CSV)",
+    label="Export Filtered Shipment Records (CSV)",
     data=csv_data,
     file_name=f"ghana_healthcare_logistics_filtered_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
     mime="text/csv",
@@ -1164,7 +1650,7 @@ st.download_button(
 # -----------------------------------------------------------------------------
 # 9. Architectural & Methodological Documentation
 # -----------------------------------------------------------------------------
-with st.expander("📐 Technical Architecture, Star Schema & Methodological Notes"):
+with st.expander("Technical Architecture, Star Schema & Methodological Notes"):
     st.markdown("""
     ### Data Engineering & Mathematical Methodology
 

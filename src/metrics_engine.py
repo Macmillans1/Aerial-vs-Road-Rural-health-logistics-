@@ -49,6 +49,27 @@ class ExecutiveKPIs:
     total_value_delivered_usd: float
 
 
+@dataclass
+class LocationKPIs:
+    """Performance metrics evaluated for an individual clinic or hub location."""
+    total_requests: int
+    delivered_requests: int
+    actual_dispatches: int
+    on_time_orders: int
+    delayed_orders: int
+    stock_outs: int
+    stock_out_rate_pct: Optional[float]
+    standard_otif_rate_pct: Optional[float]
+    quality_otif_rate_pct: Optional[float]
+    avg_lead_time_hours: Optional[float]
+    p90_lead_time_hours: Optional[float]
+    cold_chain_integrity_pct: Optional[float]
+    total_delivered_cold_orders: int
+    cold_chain_breaches_count: int
+    unknown_quality_cold_orders: int
+
+
+
 def filter_shipment_ledger(
     df: pd.DataFrame,
     search_query: Optional[str] = None,
@@ -816,3 +837,156 @@ class SupplyChainMetricsEngine:
         clinic_agg["drone_share_pct"] = clinic_agg["drone_share_pct"].round(1)
 
         return clinic_agg
+
+    @staticmethod
+    def filter_by_location(
+        df: pd.DataFrame,
+        location_type: str,
+        location_id: str,
+    ) -> pd.DataFrame:
+        """Filter shipment dataset for a specific clinic or hub.
+
+        For Clinics: Filters on clinic_id.
+        For Hubs: Filters on the shipment's actual handling hub_id.
+        """
+        if df is None or len(df) == 0:
+            return pd.DataFrame() if df is None else df.copy()
+
+        if location_type.strip().lower() == "clinic":
+            return df[df["clinic_id"] == location_id].copy()
+        elif location_type.strip().lower() == "hub":
+            return df[df["hub_id"] == location_id].copy()
+        else:
+            raise ValueError(f"Unknown location_type '{location_type}'. Must be 'Clinic' or 'Hub'.")
+
+    @staticmethod
+    def compute_location_kpis(df: pd.DataFrame) -> LocationKPIs:
+        """Calculate operational KPIs for a specific clinic or hub location subset.
+
+        Returns LocationKPIs with None for rates where there are zero eligible denominator records,
+        allowing clean 'N/A' display in the UI. Explicitly tracks verified cold-chain integrity
+        and unknown quality counts.
+        """
+        total_requests = len(df) if df is not None else 0
+        if total_requests == 0:
+            return LocationKPIs(
+                total_requests=0,
+                delivered_requests=0,
+                actual_dispatches=0,
+                on_time_orders=0,
+                delayed_orders=0,
+                stock_outs=0,
+                stock_out_rate_pct=None,
+                standard_otif_rate_pct=None,
+                quality_otif_rate_pct=None,
+                avg_lead_time_hours=None,
+                p90_lead_time_hours=None,
+                cold_chain_integrity_pct=None,
+                total_delivered_cold_orders=0,
+                cold_chain_breaches_count=0,
+                unknown_quality_cold_orders=0,
+            )
+
+        delivered_mask = df["is_delivered"]
+        delivered_requests = int(delivered_mask.sum())
+        actual_dispatches = int(df["dispatch_timestamp"].notna().sum()) if "dispatch_timestamp" in df.columns else delivered_requests
+        on_time_orders = int(df["is_on_time"].sum())
+        delayed_orders = int(df["is_delayed"].sum())
+        stock_outs = int((df["order_status"] == "Stock-Out").sum())
+
+        stock_out_rate_pct = round((stock_outs / total_requests) * 100.0, 2)
+        standard_otif_rate_pct = round((int(df["is_standard_otif"].sum()) / total_requests) * 100.0, 2)
+        quality_otif_rate_pct = round((int(df["is_quality_otif"].sum()) / total_requests) * 100.0, 2)
+
+        delivered_df = df[delivered_mask]
+        if delivered_requests > 0 and delivered_df["lead_time_hours"].notna().any():
+            avg_lead_time_hours = round(float(delivered_df["lead_time_hours"].mean()), 2)
+            p90_lead_time_hours = round(float(delivered_df["lead_time_hours"].quantile(0.90)), 2)
+        else:
+            avg_lead_time_hours = None
+            p90_lead_time_hours = None
+
+        delivered_cold = delivered_df[delivered_df["storage_requirement"] == "Cold Chain"]
+        total_delivered_cold = len(delivered_cold)
+
+        if total_delivered_cold > 0:
+            breaches_count = int((delivered_cold["cold_chain_breach"] == True).sum())
+            unknown_quality_count = int(delivered_cold["cold_chain_breach"].isna().sum())
+            known_delivered_cold = delivered_cold[delivered_cold["cold_chain_breach"].notna()]
+
+            if len(known_delivered_cold) > 0:
+                cold_chain_integrity = round(
+                    ((known_delivered_cold["cold_chain_breach"] == False).sum() / len(known_delivered_cold)) * 100.0,
+                    2
+                )
+            else:
+                cold_chain_integrity = None
+        else:
+            breaches_count = 0
+            unknown_quality_count = 0
+            cold_chain_integrity = None
+
+        return LocationKPIs(
+            total_requests=total_requests,
+            delivered_requests=delivered_requests,
+            actual_dispatches=actual_dispatches,
+            on_time_orders=on_time_orders,
+            delayed_orders=delayed_orders,
+            stock_outs=stock_outs,
+            stock_out_rate_pct=stock_out_rate_pct,
+            standard_otif_rate_pct=standard_otif_rate_pct,
+            quality_otif_rate_pct=quality_otif_rate_pct,
+            avg_lead_time_hours=avg_lead_time_hours,
+            p90_lead_time_hours=p90_lead_time_hours,
+            cold_chain_integrity_pct=cold_chain_integrity,
+            total_delivered_cold_orders=total_delivered_cold,
+            cold_chain_breaches_count=breaches_count,
+            unknown_quality_cold_orders=unknown_quality_count,
+        )
+
+    @staticmethod
+    def get_location_product_diagnostics(df: pd.DataFrame) -> pd.DataFrame:
+        """Compute product-level breakdown for a location subset.
+
+        Returns DataFrame containing:
+        - product_name
+        - category
+        - request_count
+        - delivered_count
+        - late_delivery_count (delivered late relative to SLA)
+        - delay_rate_pct (evaluated over delivered requests)
+        - stock_outs (undelivered stock-outs)
+        - unmet_units (requested quantity for stock-out orders)
+        """
+        cols = [
+            "product_name", "category", "request_count", "delivered_count",
+            "late_delivery_count", "delay_rate_pct", "stock_outs", "unmet_units"
+        ]
+        if df is None or len(df) == 0:
+            return pd.DataFrame(columns=cols)
+
+        records = []
+        for (prod_name, cat), grp in df.groupby(["product_name", "category"], observed=True):
+            req_cnt = len(grp)
+            deliv_cnt = int(grp["is_delivered"].sum())
+            late_cnt = int(grp["is_delayed"].sum())
+            delay_rate = round((late_cnt / deliv_cnt) * 100.0, 1) if deliv_cnt > 0 else np.nan
+            stock_cnt = int((grp["order_status"] == "Stock-Out").sum())
+            unmet_qty = int(grp.loc[grp["order_status"] == "Stock-Out", "units_requested"].sum())
+
+            records.append({
+                "product_name": prod_name,
+                "category": cat,
+                "request_count": req_cnt,
+                "delivered_count": deliv_cnt,
+                "late_delivery_count": late_cnt,
+                "delay_rate_pct": delay_rate,
+                "stock_outs": stock_cnt,
+                "unmet_units": unmet_qty,
+            })
+
+        res_df = pd.DataFrame(records)
+        if len(res_df) > 0:
+            res_df = res_df.sort_values(by=["request_count", "late_delivery_count"], ascending=[False, False])
+        return res_df
+
